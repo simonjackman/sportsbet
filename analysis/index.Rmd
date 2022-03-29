@@ -35,6 +35,7 @@ theStates <- c("ACT","NT","QLD","NSW","VIC","TAS","SA","WA")
 theFiles <- list.files(here("data"),pattern="fst$",full.names = TRUE)
 d <- lapply(theFiles,read.fst)
 d <- bind_rows(d)
+lubridate::tz(d$datetime) <- "Australia/Sydney"
 
 ## correct spelling error by Sportsbet
 d <- d %>%
@@ -216,7 +217,7 @@ hdata <- d %>%
   filter(outcomes!="Any Other")
 
 hchart(hdata,
-       hcaes(x = as.Date(datetime),
+       hcaes(x = as.Date(datetime,tz="Australia/Sydney"),
              y = prob_nls,
              group=outcomes),
        type="line") %>%
