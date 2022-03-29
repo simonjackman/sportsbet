@@ -1,7 +1,7 @@
-name: "sportsbet"
+name: sportsbet
 output_dir: ../docs
 navbar:
-  title: "sportsbet"
+  title: sportsbet
   left:
   - text: Home
     href: index.html
@@ -9,9 +9,13 @@ navbar:
     href: about.html
   - text: License
     href: license.html
+  right:
+  - icon: fab fa-github
+    text: Source code
+    href: https://github.com/simonjackman/sportsbet
 output:
-  workflowr::wflow_html:
+  bookdown::html_document2:
+    css: preamble.css
     toc: yes
     toc_float: yes
-    theme: cosmo
-    highlight: textmate
+    self-contained: yes
