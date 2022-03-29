@@ -1,0 +1,11 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Jackman"
+  given-names: "Simon"
+  orcid: "https://orcid.org/0000-0001-7421-4034"
+  email: simonjackman@icloud.com
+  affiliation: University of Sydney
+title: "Betting odds and the 2022 Australian election"
+date-released: 2022-03-29
+url: "https://github.com/simonjackman/sportsbet"
