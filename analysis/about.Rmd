@@ -7,4 +7,4 @@ editor_options:
   chunk_output_type: console
 ---
 
-Describe your project.
+Scraping and analysis of Sportsbet election betting markets ahead of the 2022 Australian federal election.
