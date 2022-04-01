@@ -292,7 +292,7 @@ datatable(tab,
 
 ## Relationship between IPOW and seat margins
 
-With long-shot probabilities again set to zero, we examine the relationship between IPOWs and two-candidate preferred results in each seat, using 2019 results of notional results in the event of electoral redistributions since 2019.
+With long-shot probabilities again set to zero, we examine the relationship between IPOWs and two-candidate preferred results in each seat, using 2019 results or notional results in the event of electoral redistributions since 2019.
 
 Current Sportsbet prices are broadly consistent with the assumption of a 4 to 5 percentage point TCP swing from the Coalition to Labor.  That is, IPOWs of 50% are around a 54-46 Coalition/Labor split of the 2019 or notional 2022 TPP vote.
 
