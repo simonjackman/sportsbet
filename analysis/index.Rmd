@@ -41,7 +41,7 @@ lubridate::tz(d$datetime) <- "Australia/Sydney"
 d <- d %>%
   mutate(event = ifelse(event=="Capriconia (QLD)","Capricornia (QLD)",event))
 
-lastDate <- strftime(max(d$datetime),"%l%p %d %B")
+lastDate <- strftime(max(d$datetime),"%l%p %e %B")
 
 ## NATIONAL MARKET
 tab <- d %>% 
