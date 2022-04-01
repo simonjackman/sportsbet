@@ -422,7 +422,7 @@ conversion from decimal odds almost always assumes $k_j$ is a constant $k$ over
 all events $j$, giving rise to the transformation
 
 $$
-\frac{1/d_j}{\sum_j 1/d_j} = \frac{\pi_j}{\sum_j 1/\pi_j} = \frac{p_j(1+k)}{\sum_j p_j(1+k)} = \frac{(1+k)\, p_j}{(1+k)\sum_j p_j} = p_j,
+\frac{1/d_j}{\sum_j 1/d_j} = \frac{\pi_j}{\sum_j \pi_j} = \frac{p_j(1+k)}{\sum_j p_j(1+k)} = \frac{(1+k)\, p_j}{(1+k)\sum_j p_j} = p_j,
 $$ as per equation \@ref(eq:normalisation).
 
 @strumbeljDeterminingProbabilityForecasts2014 and @levittWhyAreGambling2004
