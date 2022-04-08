@@ -217,7 +217,7 @@ hdata <- d %>%
   filter(outcomes!="Any Other")
 
 hchart(hdata,
-       hcaes(x = as.Date(datetime,tz="Australia/Sydney"),
+       hcaes(x = datetime,
              y = prob_nls,
              group=outcomes),
        type="line") %>%
@@ -346,7 +346,7 @@ r2d3(data=toJSON(data_for_d3,
 
 ## Seats likely to change hands {#seats-changing-hands}
 
-The following `r nrow(tab_change)` seats have candidates of incumbent parties with IPOWs of less then 50%:
+The following `r nrow(tab_change)` seats have candidates of incumbent parties with IPOWs of less than 50%:
 
 ```{r seats-changing-hands,results='asis'}
 datatable(tab_change %>%
