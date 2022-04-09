@@ -216,17 +216,22 @@ hdata <- d %>%
   ungroup() %>%
   filter(outcomes!="Any Other")
 
-hchart(hdata,
-       hcaes(x = datetime,
+hc <- hchart(as.data.frame(hdata),
+       hcaes(x = datetime_to_timestamp(datetime),
              y = prob_nls,
              group=outcomes),
        type="line") %>%
-  hc_xAxis(title=list(text=""),
+  hc_xAxis(title=list(text=""),type="datetime",
            dateTimeLabelFormats=list("day"="%e %b")) %>%
   hc_colors(colors=c("#009de3","#ed1b35")) %>%
   hc_yAxis(title=list(text="IPOW")) %>%
-  hc_tooltip(valueDecimals=1,valueSuffix="%") %>%
+  hc_tooltip(valueDecimals=1,
+             valueSuffix="%",
+             xDateFormat="%l%p %a %e %b",
+             dateTimeLabelFormats=list("day"="%e %b")) %>%
   hc_plotOptions(line=list(marker=list(symbol="circle")))
+hc$x$conf_opts$global$useUTC <- FALSE
+hc
 ```
 
 
