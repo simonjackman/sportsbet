@@ -177,9 +177,7 @@ As of `r lastDate`, Sportsbet betting odds imply:
 - `r ifelse(alp_win_prob_nls>50,"Labor","Coalition")` to form the next government with 
 `r round(max(c(alp_win_prob_nls,100-alp_win_prob_nls)),1)`% probability.
 
-- `r nrow(tab_change)` seats changing hands in the House of Representatives; see section \@ref(seats-changing-hands) below.
-
-- Labor leads in `r s$Leads[s$Party=="ALP"]` seats.
+- Sportsbet is offering odds in `r length(unique(dsum$event))` key House seats.  `r nrow(tab_change)` of these seats are priced as changing hands; see section \@ref(seats-changing-hands) below.
 
 - Independents favourites in `r s$Leads[s$Party=="IND"]` seats: `r ind_leads`.
 
