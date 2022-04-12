@@ -30,7 +30,7 @@ h4, h5, h6 {
 }
 
 text {
-  font-family: Avenir; 
+  font-family: Avenir;
 }
 
 caption {
@@ -64,7 +64,7 @@ caption {
 .r2d3 option, .r2d3 select {
   font-family: Avenir, 'Helvetica Neue', 'Helvetica', sans-serif;
   padding: 3px;
-  -webkit-appearance: menulist-button; 
+  -webkit-appearance: menulist-button;
 }
 
 .r2d3 input {
@@ -86,7 +86,7 @@ caption {
 }
 
 .slider_label {
-  font-weight: 400;  
+  font-weight: 400;
 }
 
 .button {
@@ -134,7 +134,7 @@ caption {
 }
 
 #ruler_test .tick line {
-  stroke: #DDDDDD7F;  
+  stroke: #DDDDDD7F;
 }
 
 .grid path {
@@ -177,7 +177,7 @@ caption {
   font-size: 12px;
   width: 100%;
   line-height: 1;
-  color: rgba(0, 0, 0, 0.75); 
+  color: rgba(0, 0, 0, 0.75);
   content: "\25BC";
   position: absolute;
   text-align: center;
@@ -224,7 +224,8 @@ caption {
 }
 */
 
-.dataTables_length label, .dataTables_filter label {
+.dataTables_length, .dataTables_filter, .dataTables_info, .dataTables_paginate {
+  font-size: 87% !important;
   font-weight: 400;
 }
 
@@ -237,8 +238,11 @@ caption {
 .datatables .sorting {
   font-variant-numeric: none;
   font-family: Avenir;
-  font-weight: 400;
+  ##font-weight: 400;
+  padding-left: 7px;
+
 }
+
 
 .track,
 .track-inset,
