@@ -41,7 +41,13 @@ lubridate::tz(d$datetime) <- "Australia/Sydney"
 d <- d %>%
   mutate(event = ifelse(event=="Capriconia (QLD)","Capricornia (QLD)",event))
 
-lastDate <- strftime(max(d$datetime),"%l%p %e %B")
+lastDate <- str_squish(strftime(max(d$datetime),"%l%p %A %e %B"))
+
+currentSeats <- d %>% 
+  filter(lab %in% theStates) %>% 
+  filter(as.Date(datetime,tz="Australia/Sydney") == Sys.Date()) %>% 
+  distinct(event) %>%
+  nrow()
 
 ## NATIONAL MARKET
 tab <- d %>% 
@@ -58,10 +64,12 @@ alp_win_prob_nls <- tab$IPOW[1]/sum(tab$IPOW[1:2])*100
 load(here("data/aec_historic_2022.RData"))
 
 ## HOUSE MARKETS, SUMMARY
+now <- Sys.time()
+yesterday <- now - 24*3600
 dsum <- d %>%
   filter(lab %in% theStates) %>%
   group_by(event) %>%
-  filter(datetime==max(datetime)) %>%
+  filter(datetime==max(datetime)) %>% ## most recent price for each seat
   ungroup() %>%
   mutate(event = str_squish(str_remove(event,pattern="\\([A-Z]{1,}\\).*$"))) %>%
   mutate(outcomes_collapsed = case_when(
@@ -99,7 +107,6 @@ s2 <- dsum %>%
 
 s <- left_join(s,s2,by="Party") %>%
   mutate(Leads=replace_na(Leads,0))
-
 
 h <- aec_historic_2022 %>%
   filter(!is.na(PartyAb)) %>%
@@ -169,18 +176,73 @@ ind_leads <- dsum %>%
     ungroup() %>% filter(leader=="IND") %>% pull(event)
 ```
 
+
+```{r linkedScatter}
+load(here("data/linkedScatter.RData"))
+
+if(!file.exists(here("js/d3-tip.js"))){
+  download.file("https://cdn.jsdelivr.net/gh/bumbeishvili/d3-tip-for-v6@4/d3-tip.min.js", 
+                here("js/d3-tip.js"))
+}
+
+ld_50_objective <- function(object,x){
+  yhat <- predict(object,newdata=data.frame(votes=x),type="response")
+  return(50-yhat)
+}
+
+ld_50_finder <- function(m){
+  uniroot(ld_50_objective,interval=c(40,60),object=m)$root  
+}
+
+library(mgcv)
+library(modelr)
+m <- tmp %>%
+  group_by(outcomes_collapsed) %>%
+  nest() %>%
+  mutate(m=map(data,~gam(prob ~ s(votes),data=.x)),
+         yhat=map2(.x=data,
+                   .y=m,
+                   ~add_predictions(data=data.frame(votes=seq_range(.x$votes,by=.10)),
+                                    model=.y,
+                                    type="response")
+         ),
+         ld50=map2(.x=data,.y=m,~ld_50_finder(.y))
+  )
+
+yhat <- m %>%
+  unnest(yhat) %>%
+  ungroup() %>%
+  select(outcomes_collapsed,votes,pred) %>%
+  mutate(votes=as.numeric(votes),
+         pred=as.numeric(pred)) %>%
+  mutate(pred = ifelse(pred<0,0,pred),
+         pred = ifelse(pred>100,100,pred))
+
+
+data_for_d3 <- list(data=tmp %>% mutate(across(where(is.double),as.numeric)) %>% 
+                      select(Division,State,votes,prob,prices,outcomes_collapsed) %>%
+                      mutate(i = match(Division,sort(unique(Division)))) %>%
+                      as.data.frame(),
+                    yhat=yhat)
+
+ld50 <- m %>% unnest(ld50) %>% select(outcomes_collapsed,ld50)
+```
+
 # Summary
 
+::: {#summary .highlights}
 As of `r lastDate`, Sportsbet betting odds imply:
 
-::: {#summary .highlights}
 - `r ifelse(alp_win_prob_nls>50,"Labor","Coalition")` to form the next government with 
 `r round(max(c(alp_win_prob_nls,100-alp_win_prob_nls)),1)`% probability.
 
-- Sportsbet is offering odds in `r length(unique(dsum$event))` key House seats.  `r nrow(tab_change)` of these seats are priced as changing hands; see section \@ref(seats-changing-hands) below.
+- Sportsbet is currently offering odds in `r currentSeats` of 151 House of Representative seats; we use the most recently available odds for the remaining `r 151-currentSeats` seats. 
+
+- `r nrow(tab_change)` seats are priced as changing hands; see section \@ref(seats-changing-hands) below. 
 
 - Independents favourites in `r s$Leads[s$Party=="IND"]` seats: `r ind_leads`.
 
+- Current Sportsbet prices are consistent with a `r round(ld50$ld50[ld50$outcomes_collapsed=="LNP"] - 50,1)` percentage point TCP swing from the Coalition to Labor; see \@ref(ipow-rship) below.
 :::
 
 This analysis examines Sportsbet odds in various election betting markets for the
@@ -189,7 +251,7 @@ This analysis examines Sportsbet odds in various election betting markets for th
 We convert odds into *implied probabilities of winning* (IPOW) using a procedure
 explained in the Appendix.
 
-In the tables and charts below, we express IPOWs as percentages.
+In the tables and charts below, we express IPOWs as percentages.   Long shots (IPOWS < 10%) are set to zero and the remaining IPOWs re-normalised to sum to 100%.
 
 # Next government market
 
@@ -214,7 +276,11 @@ hdata <- d %>%
   ungroup() %>%
   filter(outcomes!="Any Other")
 
-hc <- hchart(as.data.frame(hdata),
+hc <- 
+  # highchart(hc_opts=list(time=list(timezone="Australia/Sydney",useUTC=FALSE)),
+  #               width=900,height=650) %>%
+  # hc_add_series_list(split(hdata,hdata$outcomes)) %>%
+  hchart(as.data.frame(hdata),
        hcaes(x = datetime_to_timestamp(datetime),
              y = prob_nls,
              group=outcomes),
@@ -225,10 +291,17 @@ hc <- hchart(as.data.frame(hdata),
   hc_yAxis(title=list(text="IPOW")) %>%
   hc_tooltip(valueDecimals=1,
              valueSuffix="%",
-             xDateFormat="%l%p %a %e %b",
+             xDateFormat="%l%p %A %e %b",  ## %A works but %a gives UTC (I think), weird bug in highcharts 
              dateTimeLabelFormats=list("day"="%e %b")) %>%
-  hc_plotOptions(line=list(marker=list(symbol="circle")))
+  hc_plotOptions(line=list(step="center",marker=list(symbol="circle")))
+
+## trying to coerce things to local time zone
 hc$x$conf_opts$global$useUTC <- FALSE
+hc$x$conf_opts$global$timezone <- "Australia/Sydney"
+hc$x$conf_opts$global$timezoneOffset <- -10*60
+hc$x$hc_opts$plotOptions$time <- list(timezone="Australia/Sydney",
+                                      useUTC=FALSE,
+                                      timezoneOffset=-10*60)
 hc
 ```
 
@@ -238,7 +311,7 @@ hc
 ## Expected seat counts
 
 We compute expected seat counts by summing the seat-specific probabilities of
-winning implied by Sportsbet's odds as at `r lastDate`.
+winning implied by Sportsbet's odds as at `r lastDate`.   In seats where Sportsbet is not currently offering prices we use the last observed odds in that seat.
 
 The second column of seat counts removes "long-shots", where the implied probability of winning
 is less than 10%; we do so by setting the probability of these candidates/parties to zero and renormalizing the remaining non-zero IPOWs to sum to one in each seat.   This focuses attention on differences between parties and candidates with more realistic prospects of winning.
@@ -280,61 +353,53 @@ tab <- d %>%
   group_by(event,outcomes_collapsed) %>%
   mutate(prob = sum(prob,na.rm=TRUE)*100) %>%
   ungroup() %>%
-  pivot_wider(id_cols=c("lab","event"),
+  pivot_wider(id_cols=c("lab","event","datetime"),
               names_from = "outcomes_collapsed",
               values_from = "prob")
 
-datatable(tab,
+datatable(tab %>% 
+            mutate(datetime = str_squish(strftime(tab$datetime,"%l%p %a %d %b"))),
           rownames=FALSE,
-          colnames=c('State'="lab","Division"="event"),
-          options=list(style="bootstrap4"),
+          colnames=c('State'="lab","Division"="event","Last seen"="datetime"),
+          options=list(order=list(list(6,'desc')),
+                       columnDefs=list(list(className = 'dt-left', targets=c(0,1,2)))),
           caption = "Probability of Winning implied by Sportsbet prices (long shots removed)")  %>%
   formatRound(columns=c('ALP','LNP','GRN',"IND","PHON","OTH"),1)
 ```
 
+## Seats likely to change hands {#seats-changing-hands}
 
-## Relationship between IPOW and seat margins
+The following `r nrow(tab_change)` seats have candidates of incumbent parties with IPOWs of less than 50% (again, with long-shot probabilities removed):
+
+```{r seats-changing-hands,results='asis'}
+datatable(tab_change %>%
+            mutate(incumbent_tcp=100*incumbent_tcp) %>%
+            select(Division,State,
+                   Incumbent=incumbent,
+                   `Incumbent TCP`=incumbent_tcp,
+                   `Incumbent IPOW`=incumbent_prob,
+                   Favourite=favorite),
+          rownames = FALSE,
+          options=list(style="bootstrap4",
+                       columnDefs=list(list(className = 'dt-left', targets=c(0,1)),
+                                       list(className = 'dt-center', targets=c(2,3,4,5))
+                       )
+          ),
+          caption = "") %>%
+  formatRound(columns=c(4,5),digits=1)
+```
+
+## Relationship between IPOW and seat margins {#ipow-rship}
 
 With long-shot probabilities again set to zero, we examine the relationship between IPOWs and two-candidate preferred results in each seat, using 2019 results or notional results in the event of electoral redistributions since 2019.
 
-Current Sportsbet prices are broadly consistent with the assumption of a 4 to 5 percentage point TCP swing from the Coalition to Labor.  That is, IPOWs of 50% are around a 54-46 Coalition/Labor split of the 2019 or notional 2022 TPP vote.
+Current Sportsbet prices are broadly consistent with the assumption of a `r round(ld50$ld50[ld50$outcomes_collapsed=="LNP"] - 50,1)` percentage point TCP swing from the Coalition to Labor.  
 
-Roll a mouse or pointing device over individual data points for more information.
+The blue line is a smoothing spline.
 
-```{r linkedScatter}
-load(here("data/linkedScatter.RData"))
+Roll a mouse or pointing device over individual data points for more information.   
 
-if(!file.exists(here("js/d3-tip.js"))){
-  download.file("https://cdn.jsdelivr.net/gh/bumbeishvili/d3-tip-for-v6@4/d3-tip.min.js", 
-                here("js/d3-tip.js"))
-}
-
-library(mgcv)
-library(modelr)
-m <- tmp %>%
-  group_by(outcomes_collapsed) %>%
-  nest() %>%
-  mutate(m=map(data,~gam(prob ~ s(votes),data=.x)),
-         yhat=map2(.x=data,
-                   .y=m,
-                   ~add_predictions(data=data.frame(votes=seq_range(.x$votes,by=.25)),
-                                    model=.y,
-                                    type="response")
-         )
-  ) %>%
-  unnest(yhat) %>%
-  ungroup() %>%
-  select(outcomes_collapsed,votes,pred) %>%
-  mutate(votes=as.numeric(votes),
-         pred=as.numeric(pred))
-
-
-data_for_d3 <- list(data=tmp %>% mutate(across(where(is.double),as.numeric)) %>% 
-                      select(Division,State,votes,prob,prices,outcomes_collapsed) %>%
-                      mutate(i = match(Division,sort(unique(Division)))) %>%
-                      as.data.frame(),
-                    yhat=m)
-
+```{r js-linkedscatter}
 library(jsonlite)
 r2d3(data=toJSON(data_for_d3,
                  dataframe = "rows", auto_unbox = FALSE),
@@ -347,23 +412,143 @@ r2d3(data=toJSON(data_for_d3,
      script=here("js/linkedScatter.js"))
 ```
 
-## Seats likely to change hands {#seats-changing-hands}
+## Fluctuations
 
-The following `r nrow(tab_change)` seats have candidates of incumbent parties with IPOWs of less than 50%:
+```{r}
+h_fluc_24 <- d %>%
+  filter(lab %in% theStates) %>%
+  group_by(event) %>%
+  arrange(desc(datetime)) %>%
+  filter(as.Date(datetime,tz="Australia/Sydney")>(Sys.Date()-2)) %>%
+  ungroup() %>%
+  group_by(event,datetime) %>%
+  mutate(prob_nls = ifelse(prob<.10,0,prob)) %>%
+  mutate(prob_nls = prob_nls/sum(prob_nls)) %>%
+  ungroup() %>%
+  arrange(event,outcomes,datetime)
 
-```{r seats-changing-hands,results='asis'}
-datatable(tab_change %>%
-            mutate(incumbent_tcp=100*incumbent_tcp) %>%
-            select(Division,State,
-                   Incumbent=incumbent,
-                   `Incumbent TCP`=incumbent_tcp,
-                   `Incumbent IPOW`=incumbent_prob,
-                   Favourite=favorite),
-          rownames = FALSE,
-          options=list(style="bootstrap4"),
-          caption = "") %>%
-  formatRound(columns=c(4,5),digits=1)
+h_fluc_24 <- h_fluc_24 %>%
+  semi_join(h_fluc_24 %>%
+              group_by(event,outcomes) %>%
+              summarise(flag = max(prob_nls)!=min(prob_nls)) %>%
+              ungroup() %>%
+              filter(flag) %>%
+              distinct(event),
+            by="event"
+  )
+
+h_fluc_24 <- h_fluc_24 %>%
+    anti_join(h_fluc_24 %>%
+                group_by(event,outcomes) %>%
+                summarise(all_zero = all(prob_nls==0)) %>%
+                ungroup() %>%
+                filter(all_zero),
+              by=c("event","outcomes"))
 ```
+
+Seats with odds changing in the last 24 hours: `r if(nrow(h_fluc_24)==0){"none"}`
+
+```{r eval=nrow(h_fluc_24)>0}
+knitr::kable(h_fluc_24 %>% select(event,outcomes,datetime,prob_nls))
+```
+
+
+
+Seats with odds changing in the last week:
+
+```{r week}
+h_fluc_week <- d %>%
+  filter(lab %in% theStates) %>%
+  group_by(event) %>%
+  arrange(desc(datetime)) %>%
+  filter(as.Date(datetime,tz="Australia/Sydney")>(Sys.Date()-8)) %>%
+  ungroup() %>%
+  group_by(event,datetime) %>%
+  mutate(prob_nls = ifelse(prob<.10,0,prob)) %>%
+  mutate(prob_nls = prob_nls/sum(prob_nls)) %>%
+  ungroup() %>%
+  arrange(event,outcomes,datetime)
+
+h_fluc_week <- h_fluc_week %>%
+  semi_join(h_fluc_week %>%
+              group_by(event,outcomes) %>%
+              summarise(flag = max(prob_nls)!=min(prob_nls)) %>%
+              ungroup() %>%
+              filter(flag) %>%
+              distinct(event),
+            by="event"
+  )
+
+if(nrow(h_fluc_week)>0){
+  h_fluc_week <- h_fluc_week %>%
+    anti_join(h_fluc_week %>%
+                group_by(event,outcomes) %>%
+                summarise(all_zero = all(prob_nls==0)) %>%
+                ungroup() %>%
+                filter(all_zero),
+              by=c("event","outcomes"))
+
+  g <- ggplot(h_fluc_week,
+              aes(x=datetime,y=prob_nls*100,group=outcomes,col=outcomes)) + 
+    geom_step() + 
+    scale_x_datetime("",minor_breaks = NULL,timezone = "Australia/Sydney",date_labels = "%e %b") + 
+    scale_y_continuous("IPOW",minor_breaks = NULL) + 
+    scale_color_manual("",values=c("Coalition"="#009de3","Labor"="#ed1b35")) + 
+    facet_wrap(~event) + 
+    theme_minimal(base_family = "Avenir") + 
+    theme(legend.position = "bottom",legend.direction = "horizontal")
+
+  g
+}
+```
+
+Seats with odds changing hands last 28 days:
+```{r h-fluc-month,fig.height=8,fig.width=8}
+h_fluc_month <- d %>%
+  filter(lab %in% theStates) %>%
+  group_by(event) %>%
+  arrange(desc(datetime)) %>%
+  filter(as.Date(datetime,tz="Australia/Sydney")>(Sys.Date()-29)) %>%
+  ungroup() %>%
+  group_by(event,datetime) %>%
+  mutate(prob_nls = ifelse(prob<.10,0,prob)) %>%
+  mutate(prob_nls = prob_nls/sum(prob_nls)) %>%
+  ungroup() %>%
+  arrange(event,outcomes,datetime)
+
+h_fluc_month <- h_fluc_month %>%
+  semi_join(h_fluc_month %>%
+              group_by(event,outcomes) %>%
+              summarise(flag = max(prob_nls)!=min(prob_nls)) %>%
+              ungroup() %>%
+              filter(flag) %>%
+              distinct(event),
+            by="event"
+  )
+
+if(nrow(h_fluc_month)>0){
+  h_fluc_month <- h_fluc_month %>%
+    anti_join(h_fluc_month %>%
+                group_by(event,outcomes) %>%
+                summarise(all_zero = all(prob_nls==0)) %>%
+                ungroup() %>%
+                filter(all_zero),
+              by=c("event","outcomes"))
+
+  g <- ggplot(h_fluc_month,
+              aes(x=datetime,y=prob_nls*100,group=outcomes,col=outcomes)) + 
+    geom_step() + 
+    scale_x_datetime("",minor_breaks = NULL,timezone = "Australia/Sydney",date_labels = "%e\n%b") + 
+    scale_y_continuous("IPOW",minor_breaks = NULL) + 
+    scale_color_manual("",values=c("Coalition"="#009de3","Labor"="#ed1b35")) + 
+    facet_wrap(~event) + 
+    theme_minimal(base_family = "Avenir") + 
+    theme(legend.position = "bottom",legend.direction = "horizontal")
+
+  g
+}
+```
+
 
 # Appendix
 
