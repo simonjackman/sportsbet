@@ -238,7 +238,7 @@ caption {
 .datatables .sorting {
   font-variant-numeric: none;
   font-family: Avenir;
-  ##font-weight: 400;
+  /*font-weight: 400; */
   padding-left: 7px;
 
 }
