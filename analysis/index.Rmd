@@ -41,6 +41,12 @@ lubridate::tz(d$datetime) <- "Australia/Sydney"
 d <- d %>%
   mutate(event = ifelse(event=="Capriconia (QLD)","Capricornia (QLD)",event))
 
+## catch any missing prices
+d <- d %>%
+  group_by(event,datetime) %>%
+  mutate(prob = (1/prices)/sum(1/prices,na.rm=TRUE)) %>%
+  ungroup()
+
 lastDate <- str_squish(strftime(max(d$datetime),"%l%p %A %e %B"))
 
 currentSeats <- d %>% 
@@ -55,7 +61,7 @@ tab <- d %>%
     filter(datetime==max(datetime)) %>%
   mutate(prob=prob*100) %>%
   mutate(prob_nls = ifelse(prob>10,prob,0),
-         prob_nls = prob_nls/sum(prob_nls)*100) %>%
+         prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)*100) %>%
   mutate(prices = sprintf(prices,fmt="%4.2f")) %>%
   select(Result=outcomes,Price=prices,`IPOW`=prob,prob_nls)
 
@@ -87,7 +93,7 @@ s <- dsum %>%
   ungroup() %>%
   group_by(event) %>%
   mutate(prob_nls = ifelse(prob<.10,0,prob),
-         prob_nls = prob_nls/sum(prob_nls)) %>%
+         prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)) %>%
   ungroup() %>%
   group_by(outcomes_collapsed) %>%
   summarise(`Expected Seats`=sum(prob,na.rm=TRUE),
@@ -131,7 +137,7 @@ plotData <- left_join(h,
                         group_by(event) %>%
                         filter(datetime==max(datetime)) %>%
                         mutate(prob_nls = ifelse(prob<.10,0,prob),
-                               prob_nls = prob_nls/sum(prob_nls)) %>%
+                               prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)) %>%
                         ungroup() %>%
                         mutate(event = str_squish(str_remove(event,pattern="\\([A-Z]{1,}\\).*$"))) %>%
                         mutate(outcomes_collapsed = case_when(
@@ -236,7 +242,7 @@ As of `r lastDate`, Sportsbet betting odds imply:
 - `r ifelse(alp_win_prob_nls>50,"Labor","Coalition")` to form the next government with 
 `r round(max(c(alp_win_prob_nls,100-alp_win_prob_nls)),1)`% probability.
 
-- Sportsbet is currently offering odds in `r currentSeats` of 151 House of Representative seats; we use the most recently available odds for the remaining `r 151-currentSeats` seats. 
+- Sportsbet is currently offering odds in all 151 House of Representative seats; we use the most recently available odds. 
 
 - `r nrow(tab_change)` seats are priced as changing hands; see section \@ref(seats-changing-hands) below. 
 
@@ -313,10 +319,7 @@ hc
 We compute expected seat counts by summing the seat-specific probabilities of
 winning implied by Sportsbet's odds as at `r lastDate`.   In seats where Sportsbet is not currently offering prices we use the last observed odds in that seat.
 
-The second column of seat counts removes "long-shots", where the implied probability of winning
-is less than 10%; we do so by setting the probability of these candidates/parties to zero and renormalizing the remaining non-zero IPOWs to sum to one in each seat.   This focuses attention on differences between parties and candidates with more realistic prospects of winning.
-
-The third column of counts shows where the indicated party has the highest
+The second column of seat counts removes "long-shots"; the third column counts seats where the indicated party has the highest
 IPOW.
 
 ```{r house-summary}
@@ -330,15 +333,13 @@ knitr::kable(s,digits=1,
 
 ## Seat-by-seat IPOWs 
 
-We remove long-shots (IPOWs < 10%) and renormalise the remaining IPOWS to sum to 100% in each seat:
-
-```{r}
+```{r seat-by-seat-ipows}
 tab <- d %>%
   filter(lab %in% theStates) %>%
   group_by(event) %>%
   filter(datetime==max(datetime)) %>%
   mutate(prob_nls = ifelse(prob<.10,0,prob),
-         prob_nls = prob_nls/sum(prob_nls)) %>%
+         prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)) %>%
   ungroup() %>%
   mutate(event = str_remove(event,pattern="\\([A-Z]{1,}\\).*$")) %>%
   mutate(outcomes_collapsed = case_when(
@@ -346,13 +347,17 @@ tab <- d %>%
     outcomes=="Green" ~ "GRN",
     outcomes=="Labor" ~ "ALP",
     outcomes=="One Nation" ~ "PHON",
+    outcomes=="United Australia Party" ~ "UAP",
     grepl(outcomes,pattern="Indep") ~ "IND",
     TRUE ~ "OTH"
   )) %>%
+  mutate(event=str_squish(event),
+         outcomes_collapsed = str_squish(outcomes_collapsed)) %>%
   mutate(prob=prob_nls) %>%
-  group_by(event,outcomes_collapsed) %>%
-  mutate(prob = sum(prob,na.rm=TRUE)*100) %>%
+  group_by(lab,event,datetime,outcomes_collapsed) %>%
+  summarise(prob = sum(prob,na.rm=TRUE)*100) %>%
   ungroup() %>%
+  mutate(prob = replace_na(prob,0)) %>%
   pivot_wider(id_cols=c("lab","event","datetime"),
               names_from = "outcomes_collapsed",
               values_from = "prob")
@@ -361,10 +366,10 @@ datatable(tab %>%
             mutate(datetime = str_squish(strftime(tab$datetime,"%l%p %a %d %b"))),
           rownames=FALSE,
           colnames=c('State'="lab","Division"="event","Last seen"="datetime"),
-          options=list(order=list(list(6,'desc')),
+          options=list(order=list(list(5,'desc')),
                        columnDefs=list(list(className = 'dt-left', targets=c(0,1,2)))),
           caption = "Probability of Winning implied by Sportsbet prices (long shots removed)")  %>%
-  formatRound(columns=c('ALP','LNP','GRN',"IND","PHON","OTH"),1)
+  formatRound(columns=c('ALP','LNP','GRN',"IND","PHON","UAP","OTH"),1)
 ```
 
 ## Seats likely to change hands {#seats-changing-hands}
@@ -414,44 +419,81 @@ r2d3(data=toJSON(data_for_d3,
 
 ## Fluctuations
 
-```{r}
+```{r daily}
 h_fluc_24 <- d %>%
   filter(lab %in% theStates) %>%
+  mutate(event = str_remove(event,pattern="\\([A-Z]{1,}\\).*$")) %>%
   group_by(event) %>%
   arrange(desc(datetime)) %>%
   filter(as.Date(datetime,tz="Australia/Sydney")>(Sys.Date()-2)) %>%
   ungroup() %>%
   group_by(event,datetime) %>%
   mutate(prob_nls = ifelse(prob<.10,0,prob)) %>%
-  mutate(prob_nls = prob_nls/sum(prob_nls)) %>%
+  mutate(prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)) %>%
   ungroup() %>%
+  mutate(prob_nls = replace_na(prob_nls,0)) %>%
   arrange(event,outcomes,datetime)
 
 h_fluc_24 <- h_fluc_24 %>%
   semi_join(h_fluc_24 %>%
               group_by(event,outcomes) %>%
-              summarise(flag = max(prob_nls)!=min(prob_nls)) %>%
+              summarise(flag = (max(prob_nls,na.rm=TRUE)-min(prob_nls,na.rm=TRUE)) > .Machine$double.eps) %>%
               ungroup() %>%
               filter(flag) %>%
               distinct(event),
             by="event"
   )
 
-h_fluc_24 <- h_fluc_24 %>%
-    anti_join(h_fluc_24 %>%
-                group_by(event,outcomes) %>%
-                summarise(all_zero = all(prob_nls==0)) %>%
-                ungroup() %>%
-                filter(all_zero),
-              by=c("event","outcomes"))
+# h_fluc_24 <- h_fluc_24 %>%
+#     semi_join(h_fluc_24 %>%
+#                 group_by(event,outcomes) %>%
+#                 summarise(all_zero = all(prob_nls==0)) %>%
+#                 ungroup() %>%
+#                 filter(all_zero),
+#               by=c("event","outcomes"))
+
+tab <- h_fluc_24 %>%
+    mutate(outcomes_collapsed = case_when(
+    outcomes=="Coalition" ~ "LNP",
+    outcomes=="Green" ~ "GRN",
+    outcomes=="Labor" ~ "ALP",
+    outcomes=="One Nation" ~ "PHON",
+    outcomes=="United Australia Party" ~ "UAP",
+    grepl(outcomes,pattern="Indep") ~ "IND",
+    TRUE ~ "OTH"
+  )) %>%
+  mutate(event=str_squish(event),
+         outcomes_collapsed = str_squish(outcomes_collapsed)) %>%
+  mutate(prob=prob_nls) %>%
+  group_by(lab,event,datetime,outcomes_collapsed) %>%
+  summarise(prob = sum(prob,na.rm=TRUE)*100) %>%
+  ungroup() %>%
+  mutate(prob = replace_na(prob,0)) %>%
+  pivot_wider(id_cols=c("lab","event","datetime"),
+              names_from = outcomes_collapsed,
+              values_from = prob) %>%
+  group_by(lab,event) %>%
+  arrange(datetime) %>%
+  slice(c(1,n())) %>%
+  ungroup()
+
+
 ```
 
-Seats with odds changing in the last 24 hours: `r if(nrow(h_fluc_24)==0){"none"}`
+Seats with odds changing in the last 24 hours: `r if(nrow(tab)==0){"none"}`
 
-```{r eval=nrow(h_fluc_24)>0}
-knitr::kable(h_fluc_24 %>% select(event,outcomes,datetime,prob_nls))
+```{r eval=nrow(tab)>0}
+datatable(tab %>% 
+            mutate(datetime = str_squish(strftime(tab$datetime,"%l%p %a %d %b"))),
+          rownames=FALSE,
+          colnames=c('State'="lab","Division"="event","Seen"="datetime"),
+          extensions = "RowGroup",
+          options=list(rowGroup=list(dataSrc=1),
+                       columnDefs=list(list(targets=c(0,1),visible=FALSE))
+                       ),
+          caption = "Probability of Winning implied by Sportsbet prices (long shots removed)")  %>%
+  formatRound(columns=c('ALP','LNP','GRN',"IND","PHON","UAP","OTH"),1)
 ```
-
 
 
 Seats with odds changing in the last week:
