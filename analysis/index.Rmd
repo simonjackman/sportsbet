@@ -87,6 +87,7 @@ dsum <- d %>%
     TRUE ~ "OTH"
   ))
 
+
 s <- dsum %>%
   group_by(event,outcomes_collapsed) %>%
   mutate(prob = sum(prob,na.rm=TRUE)) %>%
