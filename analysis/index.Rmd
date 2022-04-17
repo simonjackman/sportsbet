@@ -491,7 +491,7 @@ datatable(tab %>%
                        columnDefs=list(list(targets=c(0,1),visible=FALSE))
                        ),
           caption = "Probability of Winning implied by Sportsbet prices (long shots removed)")  %>%
-  formatRound(columns=c('ALP','LNP','GRN',"IND","PHON","UAP","OTH"),1)
+  formatRound(columns=4:ncol(tab),1)
 ```
 
 
