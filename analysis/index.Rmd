@@ -65,7 +65,7 @@ tab <- d %>%
   mutate(prices = sprintf(prices,fmt="%4.2f")) %>%
   select(Result=outcomes,Price=prices,`IPOW`=prob,prob_nls)
 
-alp_win_prob_nls <- tab$IPOW[1]/sum(tab$IPOW[1:2])*100
+alp_win_prob_nls <- tab$IPOW[tab$Result=="Labor"]/sum(tab$IPOW[1:2])*100
 
 load(here("data/aec_historic_2022.RData"))
 
