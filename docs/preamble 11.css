@@ -1,0 +1,284 @@
+/* Whole document: */
+body {
+  font-family: Avenir;
+  font-size: 16px;
+}
+
+/* Headers */
+h1 {
+  font-family: Avenir;
+  font-size: 32px;
+}
+
+h1.title {
+  font-size: 36px !important;
+}
+
+h2 {
+  font-family: Avenir;
+  font-size: 18px;
+}
+
+h3  {
+  font-family: Avenir;
+  font-size: 17px;
+}
+
+h4, h5, h6 {
+  font-family: Avenir;
+  font-size: 16px;
+}
+
+text {
+  font-family: Avenir; 
+}
+
+caption {
+  font-family: Avenir;
+  color: #333;
+}
+
+.tocify {
+  font-size: 14px;
+}
+
+.axis path,
+.axis line {
+  fill: none;
+  stroke: #000;
+  shape-rendering: crispEdges;
+}
+
+.highlights {
+ background-color: #cfcfcf;
+ font-weight: 600;
+}
+
+.r2d3 {
+  font-family: Avenir, 'Helvetica Neue', 'Helvetica', sans-serif;
+  font-size: 14px;
+  margin-top: 48px !important;
+  margin-bottom: 48px !important;
+}
+
+.r2d3 option, .r2d3 select {
+  font-family: Avenir, 'Helvetica Neue', 'Helvetica', sans-serif;
+  padding: 3px;
+  -webkit-appearance: menulist-button; 
+}
+
+.r2d3 input {
+  font-family: Avenir, 'Helvetica Neue', 'Helvetica', sans-serif;
+}
+
+.r2d3 .tick line, .r2d3 .x_grid, .r2d3 .y_grid {
+    stroke: #EEEEEE7F;
+    stroke-width: 1px;
+}
+
+.r2d3 .tick text {
+    font-family: Avenir, 'Helvetica Neue', 'Helvetica', sans-serif;
+    fill: #333;
+}
+
+.r2d3 .axis_lab {
+  font-size: 11px;
+}
+
+.slider_label {
+  font-weight: 400;  
+}
+
+.button {
+  font-size: 10px;
+}
+
+.largeLabel {
+  font-size: 32px !important;
+}
+
+.line {
+  fill: none;
+  opacity: 0.75;
+  shape-rendering: auto;
+  stroke: #c7ced5;
+  stroke-width: 7px;
+}
+
+.line path {
+  transition: stroke-width 250ms linear;
+    -moz-transition: stroke-width 250ms linear;
+    -webkit-transition: stroke-width 250ms linear;
+}
+
+.title {
+   text-anchor: "start";
+   font-size: 24px;
+   letter-spacing: -1px;
+   text-rendering: optimizeLegibility;
+}
+
+.meta-text {
+  font-size: 14px;
+}
+
+.name {
+  font-size: 28px;
+  text-rendering: optimizeLegibility;
+}
+
+.credit {
+   text-anchor: "left";
+   /* font-weight: 400; */
+   text-rendering: optimizeLegibility;
+}
+
+#ruler_test .tick line {
+  stroke: #DDDDDD7F;  
+}
+
+.grid path {
+    stroke-width: 0;
+}
+
+.overlay {
+  fill: none;
+  pointer-events: all;
+}
+
+.d3-tip {
+  font-family: Avenir, 'Helvetica Neue', 'Helvetica', sans-serif;
+  font-size: 14px;
+  line-height: 1.25;
+  pointer-events: none !important;
+  /* font-weight: bold; */
+  padding: 6px;
+  color: #fff;
+  background-color: rgba(0, 0, 0, 0.75);
+  border-radius: 4px;
+}
+
+.d3-tip-dark {
+  font-family: Avenir, 'Helvetica Neue', 'Helvetica', sans-serif;
+  font-size: 14px;
+  line-height: 1.25;
+  pointer-events: none !important;
+  /* font-weight: bold; */
+  padding: 6px;
+  color: #fff;
+  background-color: rgba(1, 1, 1, 0.5);
+  border-radius: 4px;
+}
+
+/* Creates a small triangle extender for the tooltip */
+.d3-tip:after {
+  box-sizing: border-box;
+  display: inline;
+  font-size: 12px;
+  width: 100%;
+  line-height: 1;
+  color: rgba(0, 0, 0, 0.75); 
+  content: "\25BC";
+  position: absolute;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Northward tooltips */
+.d3-tip.n:after {
+  content: "▼";
+  margin: -1px 0 0 0;
+  top: 100%;
+  left: 0;
+  text-align: center;
+}
+
+/* Eastward tooltips */
+.d3-tip.e:after {
+  content: "◀";
+  margin: -4px 0 0 0;
+  top: 50%;
+  left: -8px;
+}
+
+/* Southward tooltips */
+.d3-tip.s:after {
+  content: "▲";
+  margin: 0 0 1px 0;
+  top: -8px;
+  left: 0;
+  text-align: center;
+}
+
+/* Westward tooltips */
+.d3-tip.w:after {
+  content: "▶";
+  margin: -4px 0 0 -1px;
+  top: 50%;
+  left: 100%;
+}
+
+/* .d3-tip table, .d3-tip tr, .d3-tip td {
+  padding: 0;
+  margin: 0;
+}
+*/
+
+.dataTables_length label, .dataTables_filter label {
+  font-weight: 400;
+}
+
+/* .datatables .dt-right {
+  font-variant-numeric: tabular-nums;
+  font-family: NumbersClaimcheck;
+}
+*/
+
+.datatables .sorting {
+  font-variant-numeric: none;
+  font-family: Avenir;
+  font-weight: 400;
+}
+
+.track,
+.track-inset,
+.track-overlay {
+      stroke-linecap: round;
+}
+
+.track {
+      stroke: #000;
+      stroke-opacity: 0.3;
+      stroke-width: 10px;
+}
+
+.track-inset {
+      stroke: #dcdcdc;
+      stroke-width: 8px;
+}
+
+.track-overlay-minor {
+      pointer-events: stroke;
+      stroke-width: 20px;
+      stroke: transparent;
+      cursor: crosshair;
+}
+
+.track-inset-minor {
+      stroke: #dcdcdc;
+      stroke-width: 4px;
+}
+
+.track-overlay {
+      pointer-events: stroke;
+      stroke-width: 50px;
+      stroke: transparent;
+      cursor: crosshair;
+}
+
+#animate_sequence .handle, #presvote_scatter .handle  {
+      fill: #fff;
+      stroke: #000;
+      stroke-opacity: 0.5;
+      stroke-width: 1.25px;
+}
