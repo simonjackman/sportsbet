@@ -167,11 +167,12 @@ tab_change <- plotData %>%
   summarise(incumbent = outcomes_collapsed[which.max(p)],
             incumbent_tcp = p[which.max(p)],
             incumbent_prob = prob[which.max(p)],
+            incumbent_fav = !any(prob>incumbent_prob),
             favorite = outcomes_collapsed[which.max(prob)]) %>% 
   ungroup()
 
 tab_change <- left_join(
-  tab_change %>% filter(favorite!=incumbent | incumbent_prob<.5),
+  tab_change %>% filter(!incumbent_fav),
   plotData %>% select(Division,State) %>% distinct(),
   by="Division") %>%
   arrange(incumbent_prob)
@@ -371,9 +372,9 @@ datatable(tab %>%
   formatRound(columns=c('ALP','LNP','GRN',"IND","PHON","UAP","OTH"),1)
 ```
 
-## Seats likely to change hands {#seats-changing-hands}
+## Seats tipped to change hands {#seats-changing-hands}
 
-The following `r nrow(tab_change)` seats have candidates of incumbent parties with IPOWs of less than 50% (again, with long-shot probabilities removed):
+The following `r nrow(tab_change)` seats do **not** have the candidate of the incumbent party as the market favourite (nor among the favourites, in the rare case of ties).
 
 ```{r seats-changing-hands,results='asis'}
 datatable(tab_change %>%
