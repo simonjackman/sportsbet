@@ -514,7 +514,7 @@ h_fluc_week <- d %>%
 h_fluc_week <- h_fluc_week %>%
   semi_join(h_fluc_week %>%
               group_by(event,outcomes) %>%
-              summarise(flag = max(prob_nls)!=min(prob_nls)) %>%
+              summarise(flag = max(prob_nls,na.rm=TRUE)!=min(prob_nls,na.rm=TRUE)) %>%
               ungroup() %>%
               filter(flag) %>%
               distinct(event),
@@ -529,19 +529,22 @@ if(nrow(h_fluc_week)>0){
                 ungroup() %>%
                 filter(all_zero),
               by=c("event","outcomes"))
+}
+panels <- length(unique(h_fluc_week$event))
+```
 
+```{r h-fluc-week-plot,fig.height=1.25*ceiling(panels/2),eval=panels>0}
   g <- ggplot(h_fluc_week,
               aes(x=datetime,y=prob_nls*100,group=outcomes,col=outcomes)) + 
     geom_step() + 
     scale_x_datetime("",minor_breaks = NULL,timezone = "Australia/Sydney",date_labels = "%e %b") + 
     scale_y_continuous("IPOW",minor_breaks = NULL) + 
     scale_color_manual("",values=c("Coalition"="#009de3","Labor"="#ed1b35")) + 
-    facet_wrap(~event) + 
+    facet_wrap(~event,ncol = 2) + 
     theme_minimal(base_family = "Avenir") + 
     theme(legend.position = "bottom",legend.direction = "horizontal")
 
   g
-}
 ```
 
 Seats with odds changing hands last 28 days:
