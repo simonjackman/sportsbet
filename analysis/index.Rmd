@@ -512,6 +512,16 @@ h_fluc_week <- d %>%
   arrange(event,outcomes,datetime)
 
 h_fluc_week <- h_fluc_week %>%
+    anti_join(h_fluc_week %>%
+                group_by(event,outcomes) %>%
+                summarise(all_zero = all(prob_nls==0),
+                          all_na = all(is.na(prob_nls)),
+                          all_inf=all(is.infinite(prob_nls))) %>%
+                ungroup() %>%
+                filter(all_zero | all_inf | all_na),
+              by=c("event","outcomes"))
+
+h_fluc_week <- h_fluc_week %>%
   semi_join(h_fluc_week %>%
               group_by(event,outcomes) %>%
               summarise(flag = max(prob_nls,na.rm=TRUE)!=min(prob_nls,na.rm=TRUE)) %>%
@@ -525,9 +535,10 @@ if(nrow(h_fluc_week)>0){
   h_fluc_week <- h_fluc_week %>%
     anti_join(h_fluc_week %>%
                 group_by(event,outcomes) %>%
-                summarise(all_zero = all(prob_nls==0)) %>%
+                summarise(all_zero = all(prob_nls==0),
+                          all_inf=all(is.infinite(prob_nls))) %>%
                 ungroup() %>%
-                filter(all_zero),
+                filter(all_zero | all_inf),
               by=c("event","outcomes"))
 }
 panels <- length(unique(h_fluc_week$event))
