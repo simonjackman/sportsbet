@@ -13,18 +13,21 @@ library(ussc)
 library(RSelenium)
 library(rvest)
 
+
+theStates <- c("ACT","NT","QLD","NSW","VIC","TAS","SA","WA")
+
 urls <- tribble(
   ~lab, ~theURL,
   "Next Sworn Government",
   "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-47th-parliament-of-australia-4664855",
-  "ACT", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-act-seats-5849944",
-  "NSW", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-nsw-seats-5878289",
-  "NT", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-nt-seats-6225384",
-  "QLD", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-qld-seats-6227453",
-  "SA", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-sa-seats-6240454",
-  "TAS", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-tas-seats-6225404",
-  "VIC", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-vic-seats-6054105",
-  "WA", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-wa-seats-6240412",
+  "ACT", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-act-seats-6484557",
+  "NSW", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-nsw-seats-6484922",
+  "NT", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/electorate-betting-nt-seats-6484664",
+  "QLD", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/electorate-betting-qld-seats-6496304",
+  "SA", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/electorate-betting-sa-seats-6494014",
+  "TAS", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/electorate-betting-tas-seats-6484714",
+  "VIC", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/electorate-betting-vic-seats-6495711",
+  "WA", "https://www.sportsbet.com.au/betting/politics/australian-federal-politics/electorate-betting-wa-seats-6496079",
   "Type of
 Government","https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-type-of-government-formed-5758351",
   "Hung Parliament","https://www.sportsbet.com.au/betting/politics/australian-federal-politics/next-federal-election-hung-parliament-6238749")
@@ -165,6 +168,7 @@ for(i in 1:n){
 }
 
 d <- bind_rows(d,.id="lab")
+
 library(fst)
 write_fst(d,path=here(paste("data/",strftime(Sys.time(),format="%Y%m%d%H%m"),".fst",sep="")))
 
