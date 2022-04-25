@@ -484,8 +484,12 @@ tab <- h_fluc_24 %>%
               values_from = prob) %>%
   group_by(lab,event) %>%
   arrange(datetime) %>%
-  ##slice(c(1,n())) %>%
+  mutate(delta=ALP!=lag(ALP) | GRN!=lag(GRN) | LNP !=lag(LNP) | IND !=lag(IND)) %>%
   ungroup() %>%
+  group_by(lab,event) %>%
+  slice(c(which.max(delta)-1,which(delta==1))) %>%
+  ungroup() %>%
+  select(-delta) %>%
   arrange(event,datetime)
 ```
 
@@ -593,24 +597,51 @@ panels <- length(unique(h_fluc_week$event))
   g
 ```
 
-##Seats with odds changing hands last 28 days:
-```{r h-fluc-month,fig.height=8,fig.width=8,eval=FALSE}
+Seats with odds changing hands last 28 days:
+```{r h-fluc-month,fig.height=8,fig.width=8}
 h_fluc_month <- d %>%
   filter(lab %in% theStates) %>%
+   mutate(outcomes_collapsed = 
+           if_else(
+             grepl(outcomes,pattern=")$"),
+             parse_outcomes(outcomes),
+             case_when(
+               outcomes=="Coalition" ~ "LNP",
+               outcomes=="Green" ~ "GRN",
+               outcomes=="Labor" ~ "ALP",
+               outcomes=="One Nation" ~ "PHON",
+               outcomes=="United Australia Party" ~ "UAP",
+               grepl(outcomes,pattern="Indep") ~ "IND",
+               TRUE ~ "OTH")
+           )
+  ) %>%
   group_by(event) %>%
   arrange(desc(datetime)) %>%
-  filter(as.Date(datetime,tz="Australia/Sydney")>(Sys.Date()-29)) %>%
+  filter(as.Date(datetime,tz="Australia/Sydney")>(Sys.Date()-28)) %>%
+  ungroup() %>%
+  group_by(event,datetime,outcomes_collapsed) %>%
+  summarise(prob=sum(prob,na.rm=TRUE)) %>%
   ungroup() %>%
   group_by(event,datetime) %>%
   mutate(prob_nls = ifelse(prob<.10,0,prob)) %>%
   mutate(prob_nls = prob_nls/sum(prob_nls)) %>%
   ungroup() %>%
-  arrange(event,outcomes,datetime)
+  arrange(event,outcomes_collapsed,datetime)
+
+h_fluc_month <- h_fluc_month %>%
+    anti_join(h_fluc_month %>%
+                group_by(event,outcomes_collapsed) %>%
+                summarise(all_zero = all(prob_nls==0),
+                          all_na = all(is.na(prob_nls)),
+                          all_inf=all(is.infinite(prob_nls))) %>%
+                ungroup() %>%
+                filter(all_zero | all_inf | all_na),
+              by=c("event","outcomes_collapsed"))
 
 h_fluc_month <- h_fluc_month %>%
   semi_join(h_fluc_month %>%
-              group_by(event,outcomes) %>%
-              summarise(flag = max(prob_nls)!=min(prob_nls)) %>%
+              group_by(event,outcomes_collapsed) %>%
+              summarise(flag = max(prob_nls,na.rm=TRUE)!=min(prob_nls,na.rm=TRUE)) %>%
               ungroup() %>%
               filter(flag) %>%
               distinct(event),
@@ -620,24 +651,36 @@ h_fluc_month <- h_fluc_month %>%
 if(nrow(h_fluc_month)>0){
   h_fluc_month <- h_fluc_month %>%
     anti_join(h_fluc_month %>%
-                group_by(event,outcomes) %>%
-                summarise(all_zero = all(prob_nls==0)) %>%
+                group_by(event,outcomes_collapsed) %>%
+                summarise(all_zero = all(prob_nls==0),
+                          all_inf=all(is.infinite(prob_nls))) %>%
                 ungroup() %>%
-                filter(all_zero),
-              by=c("event","outcomes"))
-
-  g <- ggplot(h_fluc_month,
-              aes(x=datetime,y=prob_nls*100,group=outcomes,col=outcomes)) + 
-    geom_step() + 
-    scale_x_datetime("",minor_breaks = NULL,timezone = "Australia/Sydney",date_labels = "%e\n%b") + 
-    scale_y_continuous("IPOW",minor_breaks = NULL) + 
-    scale_color_manual("",values=c("Coalition"="#009de3","Labor"="#ed1b35")) + 
-    facet_wrap(~event) + 
-    theme_minimal(base_family = "Avenir") + 
-    theme(legend.position = "bottom",legend.direction = "horizontal")
-
-  g
+                filter(all_zero | all_inf),
+              by=c("event","outcomes_collapsed"))
 }
+panels <- length(unique(h_fluc_month$event))
+```
+
+```{r make-fluc-month-plot,fig.height=1.5*ceiling(panels/2),eval=panels>0}
+g <- ggplot(h_fluc_month,
+            aes(x=datetime,y=prob_nls,
+                group=outcomes_collapsed,
+                col=outcomes_collapsed)) + 
+  geom_step() + 
+  scale_x_datetime("",minor_breaks = NULL,
+                   timezone = "Australia/Sydney",
+                   date_labels = "%e\n%b") + 
+  scale_y_continuous("IPOW",
+                     minor_breaks=NULL,
+                     trans="beta",
+                     breaks=c(0,.30,.4,.5,.6,.70,1),
+                     labels = function(b){as.character(100*b)}) + 
+  scale_color_manual("",values=c("LNP"="#009de3","ALP"="#ed1b35")) + 
+  facet_wrap(~event,ncol = 2) + 
+  theme_minimal(base_family = "Avenir") + 
+  theme(legend.position = "bottom",legend.direction = "horizontal")
+
+g
 ```
 
 
