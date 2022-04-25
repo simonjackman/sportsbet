@@ -28,6 +28,10 @@ library(r2d3)
 options(r2d3.shadow=FALSE)
 library(DT)
 theStates <- c("ACT","NT","QLD","NSW","VIC","TAS","SA","WA")
+
+library(scales)
+beta_trans <- function(shape1=1/3,shape2=1/3,...){
+  probability_trans("beta",shape1,shape2,...)}
 ```
 
 
@@ -566,15 +570,21 @@ if(nrow(h_fluc_week)>0){
 panels <- length(unique(h_fluc_week$event))
 ```
 
-```{r h-fluc-week-plot,fig.height=1.25*ceiling(panels/2),eval=panels>0}
+```{r h-fluc-week-plot,fig.height=1.5*ceiling(panels/2),eval=panels>0}
   g <- ggplot(h_fluc_week,
               aes(x=datetime,
-                  y=prob_nls*100,
+                  y=prob_nls,
                   group=outcomes_collapsed,
                   col=outcomes_collapsed)) + 
     geom_step() + 
-    scale_x_datetime("",minor_breaks = NULL,timezone = "Australia/Sydney",date_labels = "%e %b") + 
-    scale_y_continuous("IPOW",minor_breaks = NULL) + 
+    scale_x_datetime("",minor_breaks = NULL,
+                     timezone = "Australia/Sydney",
+                     date_labels = "%e %b") + 
+    scale_y_continuous("IPOW",
+                       minor_breaks=NULL,
+                       trans="beta",
+                       breaks=c(0,.30,.4,.5,.6,.70,1),
+                       labels = function(b){as.character(100*b)}) + 
     scale_color_manual("",values=c("LNP"="#009de3","ALP"="#ed1b35")) + 
     facet_wrap(~event,ncol = 2) + 
     theme_minimal(base_family = "Avenir") + 
