@@ -38,7 +38,7 @@ beta_trans <- function(shape1=1/3,shape2=1/3,...){
 ```{r read-data-files}
 theFiles <- list.files(here("data"),pattern="fst$",full.names = TRUE)
 d <- lapply(theFiles,read.fst)
-d <- bind_rows(d)
+d <- bind_rows(d) %>% mutate(event=str_squish(event))
 lubridate::tz(d$datetime) <- "Australia/Sydney"
 
 ## correct spelling error by Sportsbet
@@ -363,6 +363,7 @@ tab <- d %>%
          prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)*100,
          prob=prob_nls,
          prob = replace_na(prob,0)) %>%
+  ungroup() %>%
   pivot_wider(id_cols=c("lab","event","datetime"),
               names_from = "outcomes_collapsed",
               values_from = "prob")
@@ -710,7 +711,7 @@ coin tosses ahead of cricket matches, bookmakers typically offer prices of $d$ =
 1.91 or thereabouts for each of the two outcomes; more surprising is that
 gamblers participate in this market at all. This is a case where the *actual*
 probabilities held by both bookmakers and punters can be reasonably presumed to
-be 50-50 on each of the two outcomes. A fair price on a unit wager is therefore
+be .5 for each of the two outcomes. A fair price on a unit wager is therefore
 2.00, with expected value of 1.00 = .5 $\times$ 2.00 + .5 $\times$ 0.
 
 Observe that the fair price of $d$ = 2.00 is simply the inverse of the
