@@ -20,6 +20,7 @@ editor_options:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo=FALSE,warnings=FALSE,message = FALSE)
 options(htmltools.dir.version = FALSE)
+options(knitr.kable.NA = '-')
 
 library(tidyverse)
 library(here)
@@ -59,6 +60,22 @@ currentSeats <- d %>%
   distinct(event) %>%
   nrow()
 
+## AEC results
+load(here("data/aec_historic_2022.RData"))
+incumbent_party <- aec_historic_2022 %>%
+  filter(type=="tcp") %>%
+  rename(outcomes=PartyAb,Division=DivisionName) %>%
+  mutate(outcomes_collapsed = case_when(
+    outcomes %in% c("LNP","LP","CLP","NP") ~ "LNP",
+    outcomes=="GRN" ~ "GRN",
+    outcomes=="IND" ~ "IND",
+    outcomes=="ALP" ~ "ALP",
+    TRUE ~ "OTH")
+  ) %>%
+  group_by(State,Division) %>%
+  summarise(inc=outcomes_collapsed[which.max(p)]) %>%
+  ungroup()
+
 ## NATIONAL MARKET
 tab <- d %>% 
   filter(grepl(lab,pattern="Next Sworn")) %>% 
@@ -71,7 +88,7 @@ tab <- d %>%
 
 alp_win_prob_nls <- tab$IPOW[tab$Result=="Labor"]/sum(tab$IPOW[1:2])*100
 
-load(here("data/aec_historic_2022.RData"))
+
 
 
 parse_outcomes <- function(outcomes){
@@ -120,16 +137,32 @@ s <- dsum %>%
 
 s2 <- dsum %>% 
   group_by(event) %>% 
-  summarise(leader=outcomes_collapsed[which.max(prob)]) %>% 
-  ungroup() %>% 
-  count(leader) %>% 
+  mutate(leader = prob==max(prob)) %>%
   ungroup() %>%
-  rename(Party = leader,Leads=n) %>%
+  group_by(event) %>%
+  mutate(leader = leader/sum(leader)) %>%
+  ungroup() %>%
+  group_by(outcomes_collapsed) %>%
+  summarise(n=sum(leader)) %>%
+  ungroup() %>%
+  rename(Party = outcomes_collapsed,Leads=n) %>%
   arrange(Party) 
 
-s <- left_join(s,s2,by="Party") %>%
-  mutate(Leads=replace_na(Leads,0))
-
+s <- left_join(s,
+               s2,
+               by="Party") %>%
+  left_join(incumbent_party %>%
+              count(inc) %>%
+              rename(Party=inc,n_current=n),
+            by="Party") %>%
+  mutate(delta = Leads-n_current,
+         delta = str_remove(as.character(delta),'\\.0{1,}$'),
+         delta = ifelse(delta>0,
+                        paste("+",delta,sep=""),
+                        delta),
+         Leads = str_remove(as.character(Leads),'\\.0{1,}$')
+         )
+         
 h <- aec_historic_2022 %>%
   filter(!is.na(PartyAb)) %>%
   rename(outcomes=PartyAb,Division=DivisionName) %>%
@@ -174,26 +207,37 @@ tmp <- plotData %>%
 save("tmp",file=here("data/linkedScatter.RData"))
 
 tab_change <- plotData %>% 
-  filter(type=="tcp") %>% 
+  filter(type=="first_prefs") %>% 
+  left_join(plotData %>%
+              filter(type=="tcp") %>%
+              select(State,Division,outcomes_collapsed,p),
+              by=c("State","Division","outcomes_collapsed"),
+            suffix = c("","_tcp")
+            ) %>%
+  mutate(p=replace_na(p,0),
+         prob=replace_na(prob,0)) %>%
   group_by(Division) %>% 
-  summarise(incumbent = outcomes_collapsed[which.max(p)],
-            incumbent_tcp = p[which.max(p)],
-            incumbent_prob = prob[which.max(p)],
-            incumbent_fav = !any(prob>incumbent_prob),
+  summarise(incumbent = outcomes_collapsed[which.max(p_tcp)],
+            incumbent_tcp = p_tcp[which.max(p_tcp)],
+            incumbent_prob = prob[which.max(p_tcp)],
+            incumbent_fav = sum(prob>=incumbent_prob)==1,
             favorite = outcomes_collapsed[which.max(prob)]) %>% 
   ungroup()
 
 tab_change <- left_join(
-  tab_change %>% filter(!incumbent_fav),
-  plotData %>% select(Division,State) %>% distinct(),
+  tab_change %>% 
+    filter(!incumbent_fav),
+  plotData %>% 
+    select(Division,State) %>% 
+    distinct(),
   by="Division") %>%
   arrange(incumbent_prob)
 
 
 ind_leads <- dsum %>% 
     group_by(event) %>% 
-    summarise(leader=outcomes_collapsed[which.max(prob)]) %>% 
-    ungroup() %>% filter(leader=="IND") %>% pull(event)
+    summarise(ok = "IND" %in% outcomes_collapsed[prob==max(prob)]) %>% 
+    ungroup() %>% filter(ok) %>% pull(event)
 ```
 
 
@@ -248,6 +292,8 @@ data_for_d3 <- list(data=tmp %>% mutate(across(where(is.double),as.numeric)) %>%
 ld50 <- m %>% unnest(ld50) %>% select(outcomes_collapsed,ld50)
 ```
 
+<br>
+
 # Summary
 
 ::: {#summary .highlights}
@@ -258,7 +304,7 @@ As of `r lastDate`, Sportsbet betting odds imply:
 
 - `r nrow(tab_change)` House of Representatives seats are priced as changing hands; see section \@ref(seats-changing-hands) below. 
 
-- Independents favourites in `r s$Leads[s$Party=="IND"]` seats: `r ind_leads`.
+- Independents favourites or equal favourites in `r length(ind_leads)` seats: `r knitr::combine_words(ind_leads)`.
 
 - Current Sportsbet prices are consistent with a `r round(ld50$ld50[ld50$outcomes_collapsed=="LNP"] - 50,1)` percentage point TCP swing from the Coalition to Labor; see \@ref(ipow-rship) below.
 :::
@@ -270,6 +316,8 @@ We convert odds into *implied probabilities of winning* (IPOW) using a procedure
 explained in the Appendix.
 
 In the tables and charts below, we express IPOWs as percentages.   Long shots (IPOWS < 10%) are set to zero and the remaining IPOWs re-normalised to sum to 100%.
+
+<br>
 
 # Next government market
 
@@ -311,7 +359,8 @@ hc <-
              valueSuffix="%",
              xDateFormat="%l%p %A %e %b",  ## %A works but %a gives UTC (I think), weird bug in highcharts 
              dateTimeLabelFormats=list("day"="%e %b")) %>%
-  hc_plotOptions(line=list(step="center",marker=list(symbol="circle")))
+  hc_plotOptions(line=list(step="center",marker=list(symbol="circle"))) %>% 
+  hc_size(width=840)
 
 ## trying to coerce things to local time zone
 hc$x$conf_opts$global$useUTC <- FALSE
@@ -323,25 +372,36 @@ hc$x$hc_opts$plotOptions$time <- list(timezone="Australia/Sydney",
 hc
 ```
 
+<br>
 
 # House of Representatives seats
 
 ## Expected seat counts
 
 We compute expected seat counts by summing the seat-specific probabilities of
-winning implied by Sportsbet's odds as at `r lastDate`.   In seats where Sportsbet is not currently offering prices we use the last observed odds in that seat.
+winning implied by Sportsbet's odds as at `r lastDate`.   
 
-The second column of seat counts removes "long-shots"; the third column counts seats where the indicated party has the highest
-IPOW.
+
 
 ```{r house-summary}
 
 knitr::kable(s,digits=1,
+             align=rep("r",dim(s)[2]),
              col.names = c("Party",
                            "Expected<br>Seats",
                            "Expected<br>Seats<br>(no long-shots)",
-                           "Seats<br>where<br>favourite"))
+                           "Seats<br>where<br>favourite",
+                           "Current<br>Seats",
+                           "∆ seats"))
 ```
+
+**Notes on table:** the second column of seat counts removes "long-shots"; the third column counts seats where the indicated party has the highest
+IPOW (tied leads are split proportionately among equal favourites); "Current Seats" is the count of each party current seats (won in 2019 or notional after redistributions etc); $\Delta$ is the implied gain or loss in seat totals for each party, based on the current betting market front-runner in each seat.
+
+<br>
+
+
+<br>
 
 ## Seat-by-seat IPOWs 
 
