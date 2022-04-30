@@ -137,13 +137,14 @@ s <- dsum %>%
 
 s2 <- dsum %>% 
   group_by(event) %>% 
-  mutate(leader = prob==max(prob)) %>%
+  mutate(leader = prob==max(prob,na.rm=TRUE)) %>%
   ungroup() %>%
+  mutate(leader=replace_na(leader,FALSE)) %>%
   group_by(event) %>%
-  mutate(leader = leader/sum(leader)) %>%
+  mutate(leader = leader/sum(leader,na.rm=TRUE)) %>%
   ungroup() %>%
   group_by(outcomes_collapsed) %>%
-  summarise(n=sum(leader)) %>%
+  summarise(n=sum(leader,na.rm=TRUE)) %>%
   ungroup() %>%
   rename(Party = outcomes_collapsed,Leads=n) %>%
   arrange(Party) 
