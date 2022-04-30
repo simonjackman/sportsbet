@@ -441,7 +441,7 @@ datatable(tab %>%
 
 ## Seats tipped to change hands {#seats-changing-hands}
 
-The following `r nrow(tab_change)` seats do **not** have the candidate of the incumbent party as the market favourite (nor among the favourites, in the rare case of ties).
+The following `r nrow(tab_change)` seats do **not** have the candidate of the incumbent party as the unique market favourite:
 
 ```{r seats-changing-hands,results='asis'}
 datatable(tab_change %>%
@@ -556,9 +556,12 @@ tab <- h_fluc_24 %>%
   ungroup() %>%
   select(-delta) %>%
   arrange(event,datetime)
+
+h_fluc_24_nseats <- n_distinct(tab$event)
+h_fluc_24_label <- paste(h_fluc_24_nseats,ifelse(h_fluc_24_nseats==1,"seat","seats"),sep=" ")
 ```
 
-### `r nrow(tab)` seats with odds changing in the last 24 hours {.unnumbered}
+### `r h_fluc_24_label` with odds changing in the last 24 hours {.unnumbered}
 
 ```{r eval=nrow(tab)>0}
 datatable(tab %>% 
@@ -635,9 +638,10 @@ if(nrow(h_fluc_week)>0){
               by=c("event","outcomes_collapsed"))
 }
 panels <- length(unique(h_fluc_week$event))
+h_fluc_week_label <- paste(panels,ifelse(panels==1,"seat","seats"),sep=" ")
 ```
 
-### `r panels` seats with change in the last week {.unnumbered}
+### `r h_fluc_week_label` with odds changing in the last week {.unnumbered}
 
 ```{r h-fluc-week-plot,fig.height=1.5*ceiling(panels/2),eval=panels>0}
   g <- ggplot(h_fluc_week,
@@ -724,9 +728,10 @@ if(nrow(h_fluc_month)>0){
               by=c("event","outcomes_collapsed"))
 }
 panels <- length(unique(h_fluc_month$event))
+h_fluc_month_label <- paste(panels,ifelse(panels==1,"seat","seats"),sep=" ")
 ```
 
-### `r panels` seats with odds changing hands last 28 days
+### `r h_fluc_month_label` with odds changing hands last 28 days {.unnumbered}
 
 ```{r make-fluc-month-plot,fig.height=1.5*ceiling(panels/2),eval=panels>0}
 g <- ggplot(h_fluc_month,
