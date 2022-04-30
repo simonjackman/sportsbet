@@ -520,6 +520,9 @@ h_fluc_24 <- h_fluc_24 %>%
               group_by(event,outcomes) %>%
               summarise(flag = (max(prob_nls,na.rm=TRUE)-min(prob_nls,na.rm=TRUE)) > .Machine$double.eps) %>%
               ungroup() %>%
+              group_by(event) %>%
+              summarise(flag=any(flag)) %>%
+              ungroup() %>%
               filter(flag) %>%
               distinct(event),
             by="event"
@@ -555,7 +558,7 @@ tab <- h_fluc_24 %>%
   arrange(event,datetime)
 ```
 
-Seats with odds changing in the last 24 hours: `r if(nrow(tab)==0){"none"}`
+### `r nrow(tab)` seats with odds changing in the last 24 hours {.unnumbered}
 
 ```{r eval=nrow(tab)>0}
 datatable(tab %>% 
@@ -570,8 +573,6 @@ datatable(tab %>%
   formatRound(columns=4:ncol(tab),1)
 ```
 
-
-Seats with odds changing in the last week:
 
 ```{r week}
 h_fluc_week <- d %>%
@@ -636,6 +637,8 @@ if(nrow(h_fluc_week)>0){
 panels <- length(unique(h_fluc_week$event))
 ```
 
+### `r panels` seats with change in the last week {.unnumbered}
+
 ```{r h-fluc-week-plot,fig.height=1.5*ceiling(panels/2),eval=panels>0}
   g <- ggplot(h_fluc_week,
               aes(x=datetime,
@@ -659,7 +662,7 @@ panels <- length(unique(h_fluc_week$event))
   g
 ```
 
-Seats with odds changing hands last 28 days:
+
 ```{r h-fluc-month,fig.height=8,fig.width=8}
 h_fluc_month <- d %>%
   filter(lab %in% theStates) %>%
@@ -722,6 +725,8 @@ if(nrow(h_fluc_month)>0){
 }
 panels <- length(unique(h_fluc_month$event))
 ```
+
+### `r panels` seats with odds changing hands last 28 days
 
 ```{r make-fluc-month-plot,fig.height=1.5*ceiling(panels/2),eval=panels>0}
 g <- ggplot(h_fluc_month,
