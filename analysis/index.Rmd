@@ -430,7 +430,7 @@ tab <- d %>%
               values_from = "prob")
 
 datatable(tab %>% 
-            mutate(datetime = str_squish(strftime(datetime,"%l%p %a %d %b"))),
+            mutate(datetime = str_squish(strftime(datetime,"%l%p %a %e %b"))),
           rownames=FALSE,
           colnames=c('State'="lab","Division"="event","Last seen"="datetime"),
           options=list(order=list(list(5,'desc')),
@@ -536,26 +536,30 @@ h_fluc_24 <- h_fluc_24 %>%
 #                 filter(all_zero),
 #               by=c("event","outcomes"))
 
-tab <- h_fluc_24 %>%
-  mutate(event=str_squish(event),
-         outcomes_collapsed = str_squish(outcomes_collapsed)) %>%
-  mutate(prob=prob_nls) %>%
-  group_by(lab,event,datetime,outcomes_collapsed) %>%
-  summarise(prob = sum(prob,na.rm=TRUE)*100) %>%
-  ungroup() %>%
-  mutate(prob = replace_na(prob,0)) %>%
-  pivot_wider(id_cols=c("lab","event","datetime"),
-              names_from = outcomes_collapsed,
-              values_from = prob) %>%
-  group_by(lab,event) %>%
-  arrange(datetime) %>%
-  mutate(delta=ALP!=lag(ALP) | GRN!=lag(GRN) | LNP !=lag(LNP) | IND !=lag(IND)) %>%
-  ungroup() %>%
-  group_by(lab,event) %>%
-  slice(c(which.max(delta)-1,which(delta==1))) %>%
-  ungroup() %>%
-  select(-delta) %>%
-  arrange(event,datetime)
+if(nrow(h_fluc_24)<0){
+  tab <- h_fluc_24 %>%
+    mutate(event=str_squish(event),
+           outcomes_collapsed = str_squish(outcomes_collapsed)) %>%
+    mutate(prob=prob_nls) %>%
+    group_by(lab,event,datetime,outcomes_collapsed) %>%
+    summarise(prob = sum(prob,na.rm=TRUE)*100) %>%
+    ungroup() %>%
+    mutate(prob = replace_na(prob,0)) %>%
+    pivot_wider(id_cols=c("lab","event","datetime"),
+                names_from = outcomes_collapsed,
+                values_from = prob) %>%
+    group_by(lab,event) %>%
+    arrange(datetime) %>%
+    mutate(delta=ALP!=lag(ALP) | GRN!=lag(GRN) | LNP !=lag(LNP) | IND !=lag(IND)) %>%
+    ungroup() %>%
+    group_by(lab,event) %>%
+    slice(c(which.max(delta)-1,which(delta==1))) %>%
+    ungroup() %>%
+    select(-delta) %>%
+    arrange(event,datetime)
+} else {
+  tab <- NULL
+}
 
 h_fluc_24_nseats <- n_distinct(tab$event)
 h_fluc_24_label <- paste(h_fluc_24_nseats,ifelse(h_fluc_24_nseats==1,"seat","seats"),sep=" ")
@@ -563,9 +567,9 @@ h_fluc_24_label <- paste(h_fluc_24_nseats,ifelse(h_fluc_24_nseats==1,"seat","sea
 
 ### `r h_fluc_24_label` with odds changing in the last 24 hours {.unnumbered}
 
-```{r eval=nrow(tab)>0}
+```{r eval=h_fluc_24_nseats>0}
 datatable(tab %>% 
-            mutate(datetime = str_squish(strftime(tab$datetime,"%l%p %a %d %b"))),
+            mutate(datetime = str_squish(strftime(tab$datetime,"%l%p %a %e %b"))),
           rownames=FALSE,
           colnames=c('State'="lab","Division"="event","Seen"="datetime"),
           extensions = "RowGroup",
