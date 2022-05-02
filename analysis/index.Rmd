@@ -487,6 +487,7 @@ r2d3(data=toJSON(data_for_d3,
 ## Fluctuations
 
 ```{r daily}
+## last 24 hours of data
 h_fluc_24 <- d %>%
     filter(lab %in% theStates) %>%
   mutate(outcomes_collapsed = 
@@ -536,7 +537,7 @@ h_fluc_24 <- h_fluc_24 %>%
 #                 filter(all_zero),
 #               by=c("event","outcomes"))
 
-if(nrow(h_fluc_24)<0){
+if(nrow(h_fluc_24)>0){
   tab <- h_fluc_24 %>%
     mutate(event=str_squish(event),
            outcomes_collapsed = str_squish(outcomes_collapsed)) %>%
@@ -553,7 +554,7 @@ if(nrow(h_fluc_24)<0){
     mutate(delta=ALP!=lag(ALP) | GRN!=lag(GRN) | LNP !=lag(LNP) | IND !=lag(IND)) %>%
     ungroup() %>%
     group_by(lab,event) %>%
-    slice(c(which.max(delta)-1,which(delta==1))) %>%
+    slice(c(which.max(delta)-1,which(delta))) %>%
     ungroup() %>%
     select(-delta) %>%
     arrange(event,datetime)
