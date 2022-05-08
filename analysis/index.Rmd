@@ -453,6 +453,8 @@ datatable(tab_change %>%
                    Favourite=favorite),
           rownames = FALSE,
           options=list(style="bootstrap4",
+                       pageLength=nrow(tab_change),
+                       dom="t",
                        columnDefs=list(list(className = 'dt-left', targets=c(0,1)),
                                        list(className = 'dt-center', targets=c(2,3,4,5))
                        )
