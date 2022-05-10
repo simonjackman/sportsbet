@@ -88,9 +88,6 @@ tab <- d %>%
 
 alp_win_prob_nls <- tab$IPOW[tab$Result=="Labor"]/sum(tab$IPOW[1:2])*100
 
-
-
-
 parse_outcomes <- function(outcomes){
   z <- gsub(outcomes,pattern="^.*\\((.*)\\)$",replacement = "\\1")
   z <- str_squish(z)
@@ -189,18 +186,17 @@ plotData <- left_join(h,
                         ungroup() %>%
                         mutate(event = str_squish(str_remove(event,pattern="\\([A-Z]{1,}\\).*$"))) %>%
                         mutate(outcomes_collapsed = parse_outcomes(outcomes)) %>% 
+                        mutate(prob_nls = ifelse(prob<.10,0,prob)) %>%
                         group_by(lab,event,outcomes_collapsed) %>%
-                        summarise(prob = sum(prob,na.rm=TRUE),
-                                  prices=min(prices)) %>%
+                        summarise(prob_nls = sum(prob_nls,na.rm=TRUE),
+                                  prices=min(prices,na.rm=TRUE)) %>%
                         ungroup() %>%
                         group_by(event) %>%
-                        mutate(prob_nls = ifelse(prob<.10,0,prob),
-                               prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)*100) %>%
+                        mutate(prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)*100) %>%
                         ungroup() %>%
-                        mutate(prob = prob_nls) %>%
-                        rename(State=lab,Division=event),
+                        rename(prob=prob_nls,State=lab,Division=event),
                       by=c("State","Division","outcomes_collapsed")
-)
+                      )
 
 tmp <- plotData %>% 
   filter(type=="tcp" & outcomes_collapsed %in% c("ALP","LNP")) %>%
@@ -218,10 +214,11 @@ tab_change <- plotData %>%
   mutate(p=replace_na(p,0),
          prob=replace_na(prob,0)) %>%
   group_by(Division) %>% 
-  summarise(incumbent = outcomes_collapsed[which.max(p_tcp)],
-            incumbent_tcp = p_tcp[which.max(p_tcp)],
-            incumbent_prob = prob[which.max(p_tcp)],
-            incumbent_fav = sum(prob>=incumbent_prob)==1,
+  summarise(inc_indx = which.max(p_tcp),
+            incumbent = outcomes_collapsed[inc_indx],
+            incumbent_tcp = p_tcp[inc_indx],
+            incumbent_prob = prob[inc_indx],
+            incumbent_fav = sum(prob >= incumbent_prob)==1,
             favorite = outcomes_collapsed[which.max(prob)]) %>% 
   ungroup()
 
@@ -651,7 +648,7 @@ h_fluc_week_label <- paste(panels,ifelse(panels==1,"seat","seats"),sep=" ")
 ### `r h_fluc_week_label` with odds changing in the last week {.unnumbered}
 
 ```{r h-fluc-week-plot,fig.height=1.5*ceiling(panels/2),eval=panels>0}
-  g <- ggplot(h_fluc_week,
+g <- ggplot(h_fluc_week,
               aes(x=datetime,
                   y=prob_nls,
                   group=outcomes_collapsed,
@@ -670,7 +667,7 @@ h_fluc_week_label <- paste(panels,ifelse(panels==1,"seat","seats"),sep=" ")
     theme_minimal(base_family = "Avenir") + 
     theme(legend.position = "bottom",legend.direction = "horizontal")
 
-  g
+g
 ```
 
 
