@@ -416,7 +416,7 @@ tab <- d %>%
   mutate(event=str_squish(event),
          outcomes_collapsed = str_squish(outcomes_collapsed)) %>%
   group_by(lab,event,datetime,outcomes_collapsed) %>%
-  summarise(prob = sum(prob,na.rm=TRUE)) %>%
+  summarise(prob = max(prob,na.rm=TRUE)) %>%   ## get single biggest prob for a cand, hack for the case of multiple IND/OTH
   ungroup() %>%
   group_by(lab,event,datetime) %>%
   mutate(prob_nls = ifelse(prob<.10,0,prob),
