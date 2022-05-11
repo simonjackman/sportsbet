@@ -119,12 +119,14 @@ dsum <- d %>%
 
 s <- dsum %>%
   group_by(event,outcomes_collapsed) %>%
-  mutate(prob = sum(prob,na.rm=TRUE)) %>%
+  summarise(prob = max(prob,na.rm=TRUE)) %>%   ## take the leading candidate in a group, where multiples (e.g., multiple IND)
   ungroup() %>%
   group_by(event) %>%
   mutate(prob_nls = ifelse(prob<.10,0,prob),
          prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)) %>%
-  ungroup() %>%
+  ungroup() 
+
+s1 <- s %>%
   group_by(outcomes_collapsed) %>%
   summarise(`Expected Seats`=sum(prob,na.rm=TRUE),
             `Expected Seats (no long-shots)` = sum(prob_nls,na.rm=TRUE)) %>%
@@ -132,9 +134,9 @@ s <- dsum %>%
   rename(Party = outcomes_collapsed) %>%
   arrange(Party)
 
-s2 <- dsum %>% 
+s2 <- s %>% 
   group_by(event) %>% 
-  mutate(leader = prob==max(prob,na.rm=TRUE)) %>%
+  mutate(leader = prob_nls==max(prob_nls,na.rm=TRUE)) %>%
   ungroup() %>%
   mutate(leader=replace_na(leader,FALSE)) %>%
   group_by(event) %>%
@@ -146,7 +148,7 @@ s2 <- dsum %>%
   rename(Party = outcomes_collapsed,Leads=n) %>%
   arrange(Party) 
 
-s <- left_join(s,
+s <- left_join(s1,
                s2,
                by="Party") %>%
   left_join(incumbent_party %>%
