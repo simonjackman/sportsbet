@@ -419,6 +419,7 @@ tab <- d %>%
   group_by(lab,event,datetime,outcomes_collapsed) %>%
   summarise(prob = max(prob,na.rm=TRUE)) %>%   ## get single biggest prob for a cand, hack for the case of multiple IND/OTH
   ungroup() %>%
+  mutate(prob = if_else(is.infinite(prob),0,prob)) %>%
   group_by(lab,event,datetime) %>%
   mutate(prob_nls = ifelse(prob<.10,0,prob),
          prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)*100,
@@ -547,6 +548,7 @@ if(nrow(h_fluc_24)>0){
     group_by(lab,event,datetime,outcomes_collapsed) %>%
     summarise(prob = sum(prob,na.rm=TRUE)*100) %>%
     ungroup() %>%
+    mutate(prob = if_else(is.infinite(prob),0,prob)) %>%
     mutate(prob = replace_na(prob,0)) %>%
     pivot_wider(id_cols=c("lab","event","datetime"),
                 names_from = outcomes_collapsed,
@@ -608,6 +610,7 @@ h_fluc_week <- d %>%
   group_by(event,datetime,outcomes_collapsed) %>%
   summarise(prob=sum(prob,na.rm=TRUE)) %>%
   ungroup() %>%
+  mutate(prob = if_else(is.infinite(prob),0,prob)) %>%
   group_by(event,datetime) %>%
   mutate(prob_nls = ifelse(prob<.10,0,prob)) %>%
   mutate(prob_nls = prob_nls/sum(prob_nls)) %>%
@@ -698,6 +701,7 @@ h_fluc_month <- d %>%
   group_by(event,datetime,outcomes_collapsed) %>%
   summarise(prob=sum(prob,na.rm=TRUE)) %>%
   ungroup() %>%
+  mutate(prob = if_else(is.infinite(prob),0,prob)) %>%
   group_by(event,datetime) %>%
   mutate(prob_nls = ifelse(prob<.10,0,prob)) %>%
   mutate(prob_nls = prob_nls/sum(prob_nls)) %>%
