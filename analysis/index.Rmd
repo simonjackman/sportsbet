@@ -121,6 +121,7 @@ s <- dsum %>%
   group_by(event,outcomes_collapsed) %>%
   summarise(prob = max(prob,na.rm=TRUE)) %>%   ## take the leading candidate in a group, where multiples (e.g., multiple IND)
   ungroup() %>%
+  mutate(prob = if_else(is.infinite(prob),0,prob)) %>%
   group_by(event) %>%
   mutate(prob_nls = ifelse(prob<.10,0,prob),
          prob_nls = prob_nls/sum(prob_nls,na.rm=TRUE)) %>%
