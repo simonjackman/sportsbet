@@ -553,14 +553,9 @@ if(nrow(h_fluc_24)>0){
     pivot_wider(id_cols=c("lab","event","datetime"),
                 names_from = outcomes_collapsed,
                 values_from = prob) %>%
-    group_by(lab,event) %>%
+    group_by(lab,event,.drop = FALSE) %>%
     arrange(datetime) %>%
-    mutate(delta=ALP!=lag(ALP) | GRN!=lag(GRN) | LNP !=lag(LNP) | IND !=lag(IND)) %>%
     ungroup() %>%
-    group_by(lab,event) %>%
-    slice(c(which.max(delta)-1,which(delta))) %>%
-    ungroup() %>%
-    select(-delta) %>%
     arrange(event,datetime)
 } else {
   tab <- NULL
