@@ -406,7 +406,7 @@ IPOW (tied leads are split proportionately among equal favourites); "Current Sea
 
 ## Seat-by-seat IPOWs 
 
-```{r seat-by-seat-ipows}
+```{r seat-by-seat-ipows,warning=FALSE}
 tab <- d %>%
   filter(lab %in% theStates) %>%
   group_by(event) %>%
