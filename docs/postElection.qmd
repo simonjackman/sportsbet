@@ -1,0 +1,2786 @@
+---
+title: "The accuracy of Sportsbet betting markets in the 2022 Australian federal election"
+author: 
+  - Professor Simon Jackman
+date: now
+date-format: "h:mmA D MMMM YYYY"
+format:
+  html:
+    theme:
+      - cosmo
+      - custom.scss
+    mainfont: Avenir
+    fontsize: 16px
+    toc: true
+    fig-width: 8
+    fig-height: 6
+    echo: false
+    code-tools: true
+    smooth-scroll: true
+    self-contained: true
+bibliography: references.bib
+number-sections: true
+tbl-cap-location: bottom    
+crossref:
+  tbl-title: Table
+knitr: 
+  opts_knit: 
+    echo: FALSE
+    warnings: FALSE
+    message: FALSE
+    cache: FALSE
+execute:
+  keep-md: true
+  warning: false
+  error: false
+  echo: false
+  cache: false
+---
+
+```{=html}
+<script type="text/javascript" src="../js/jquery.align-column.js"></script>
+<script type="text/javascript" src="../js/fixRowGroup.js"></script>
+```
+```{ojs}
+d3 = require("d3@7")
+timeDay = require("d3-time")
+import {autoSelect} from "@jashkenas/inputs"
+```
+
+# Summary {.highlights .unnumbered}
+
+- Unlike 2019, at the end of the 2022 election campaign Sportsbet's market did accurately predict the election outcome.
+
+- Sportsbet's headline betting market on "party to form the next government" exhibited considerable volatility over the election campaign, --- even briefly tipping a Coalition re-election at one point, but otherwise suggesting a Labor win --- with an average implied probability of around 67% (@sec-party-to-form-government). Volatility in the Sportsbet national market was greater than that observed in poll averages (@sec-betting-markets-vs-polls).
+
+- Across Sportsbet's markets for all 151 House of Representatives seats, 16 market favourites were not elected, an accuracy rate of 89.4% (@sec-house-predictions).
+
+- Sportsbet markets did not predict Greens winning 3 seats in metropolitan Brisbane and only tipped one of the seven gains by independent candidates, over-estimating the Coalition's seat tally by 7 seats (65 versus 58, @sec-loses-by-favourites).
+
+- Sportsbet prices in individual seats implied that 11 seats would change hands; 8 did so, with one of those seats (Brisbane) not won by the Sportsbet favourite. Sportsbet prices had an accuracy rate of 128/140 (91.4%) in seats where incumbent candidates/parties were market favourites (@sec-predicting-seat-turnover). Of the 20 seats changing hands, Sportsbet prices correctly tipped the winner in 7 seats.
+
+- A "null" model that *no* seats would change hands would have thus made 20 errors with an accuracy rate of 86.8%. Sportsbet's markets improved on the accuracy of this null model by a net 4 seats or 2.6 percentage points of accuracy.
+
+- Survey-based estimates of each seat's result outperformed the betting markets.   YouGov's MRP estimates --- published nine days before the election --- produced 12 incorrect calls for an accuracy rate of 92.1%, with 4 fewer seats incorrectly predicted than by Sportsbet at the very end of the campaign (@sec-survey-predictions).
+
+- As is typical for odds set by bookmakers, Sportsbet prices exhibit considerable long-shot bias, over-stating the probabilities of extremely unlikely outcomes and hence under-stating the probabilities of likely outcomes (@sec-calibration).
+
+# Introduction {.unnumbered}
+
+We examine the predictive accuracy of Sportsbet's betting markets in all 151 House of Representatives seats for the 2022 Australian federal election.
+
+We convert Sportsbet closing prices to an *implied probability of winning* (IPOW) for each candidate, after first excluding long-shot candidates; these procedures are detailed in the analysis of the betting markets we generated during the 2022 campaign.
+
+```{r setup, include=FALSE}
+library(knitr)
+knitr::opts_chunk$set(echo = FALSE,
+                      warnings = FALSE,
+                      message = FALSE)
+options(htmltools.dir.version = FALSE)
+options(knitr.kable.NA = '-')
+
+library(tidyverse)
+library(here)
+library(fst)
+library(DT)
+library(htmltools)
+
+theStates <- c("ACT","NT","QLD","NSW","VIC","TAS","SA","WA")
+
+library(scales)
+beta_trans <- function(shape1 = 1/3, shape2 = 1/3, ...){
+  probability_trans("beta",shape1,shape2,...)}
+```
+
+```{r load-sportsbet-data}
+theFiles <- list.files(here("data/sportsbet"), pattern = "fst$", full.names = TRUE)
+d <- lapply(theFiles, read.fst)
+d <- bind_rows(d) %>% mutate(event = str_squish(event))
+lubridate::tz(d$datetime) <- "Australia/Sydney"
+
+## correct spelling error by Sportsbet
+d <- d %>%
+  mutate(event = ifelse(event == "Capriconia (QLD)", "Capricornia (QLD)", event)) %>%
+  mutate(
+    outcomes = ifelse(
+      event == "New England (NSW)" & outcomes == "Pavlo Samios (Liberal)",
+      "Pavlo Samios (Liberal Democrats)",
+      outcomes
+    )
+  )
+
+## catch any missing prices
+d <- d %>%
+  group_by(event, datetime) %>%
+  mutate(prob = (1 / prices) / sum(1 / prices, na.rm = TRUE)) %>%
+  ungroup()
+
+d_long <- d
+
+lastDate <- str_squish(strftime(max(d$datetime), "%l%p %A %e %B"))
+
+currentSeats <- d %>%
+  filter(lab %in% theStates) %>%
+  filter(as.Date(datetime, tz = "Australia/Sydney") == Sys.Date()) %>%
+  distinct(event) %>%
+  nrow()
+```
+
+```{r}
+#| label: load-polling-data
+polls_lnp_2pp <- readRDS(here("data/polls/xi_LNP_2PP_2022-07-16_sum_to_zero.rds"))
+polls_lnp_2pp_2019 <- readRDS(here("data/polls/xi_LNP_2PP_2019_sum_to_zero.rds"))
+load(here("data/polls/polls.RData"))
+
+ojs_define(
+  polls_lnp_2pp_tmp = polls_lnp_2pp %>% 
+    filter(date >= min(as.Date(d$datetime))) %>% 
+    mutate(y = mean*100,
+           lo = `2.5%`*100,
+           up = `97.5%`*100) %>% 
+    select(date,y,lo,up)
+  )
+
+ojs_define(
+  polls_2019 = polls_lnp_2pp_2019 %>% 
+        mutate(y = mean*100,
+           lo = lo*100,
+           up = up*100) %>% 
+    select(date,y,lo,up) %>%
+    mutate(date = date + 
+             difftime(as.Date("2022-05-21"),
+                      as.Date("2019-05-18")
+                      )
+           ) %>% 
+    filter(date >= min(as.Date(d$datetime))) 
+)
+
+set.seed(314159)
+polls_foo <- polls %>%
+  filter(mid_date >= min(as.Date(d$datetime)) &
+           what == "LNP_2PP") %>%
+  mutate(
+    midDate = strftime(mid_date,format = "%FT%XZ"),
+    startDate = strftime(start_date_2,format = "%FT%XZ"),
+    endDate = strftime(end_date_2,format = "%FT%XZ"),
+    PublicationDate = strftime(PublicationDate,format = "%FT%XZ")
+  ) %>% 
+  mutate(y_plot = case_when(
+    Pollster == "YouGov Galaxy" & endDate == "2022-05-19T00:00:00Z" ~ 47.1,
+    Pollster == "Ipsos" & endDate == "2022-05-18T00:00:00Z" ~ 46.9,
+    TRUE ~ y
+  )
+  ) %>% 
+  select(Pollster,y,y_plot,ends_with("Date"))
+
+ojs_define(polls_tmp = polls_foo)
+```
+
+```{ojs}
+pdata = transpose(polls_lnp_2pp_tmp)
+pdata_ymax = 51.75
+pdata_ymin = 42.5
+
+pdata_2019 = transpose(polls_2019)
+polls = transpose(polls_tmp)
+```
+
+```{r load AEC results}
+load(here("../results/data/2022/working/latest.RData"))
+load(here("../results/data/2022/preload/pre_load.RData"))
+
+join_parties <- function(obj) {
+  if (!("affiliation_abb" %in% names(obj)) &
+      "candidate_id" %in% names(obj)) {
+    if (is.character(obj$candidate_id)) {
+      obj$candidate_id <- as.numeric(obj$candidate_id)
+    }
+    obj <- obj %>%
+      select(-any_of("Division")) %>%
+      left_join(candidates, by = "candidate_id")
+  }
+  
+  left_join(obj,
+            parties_affiliation_group_xwalk,
+            by = "affiliation_abb") %>%
+    mutate(party_group = if_else(affiliation_abb == "IND",
+                                 "IND",
+                                 party_group)) %>%
+    mutate(party_group = replace_na(party_group, "OTH"))
+}
+
+fp <- data$fp %>%
+  rename(outcomes_collapsed = party_group)
+
+tcp <- data$tcp %>%
+  join_parties() %>%
+  rename(outcomes_collapsed = party_group)
+
+winning_party <- tcp %>%
+  group_by(Division) %>%
+  summarise(winner = outcomes_collapsed[which.max(per)]) %>%
+  ungroup()
+
+parse_outcomes <- function(outcomes) {
+  z <- gsub(outcomes, pattern = "^.*\\((.*)\\)$", replacement = "\\1")
+  z <- str_squish(z)
+  z <- case_when(
+    z %in% "Liberal Democrat" ~ "OTH",
+    z %in% "New Liberals" ~ "OTH",
+    z %in% c("ALP", "Labor") ~ "Labor",
+    z %in% c(
+      "Liberal",
+      "National",
+      "Liberal National",
+      "Liberal Party",
+      "Nationals",
+      "Liberal National Party",
+      "Country Liberal",
+      "The Nationals",
+      "Coalition"
+    ) ~ "Coalition",
+    z == "Greens" ~ "GRN",
+    z == "Independent" ~ "IND",
+    z == "One Nation" ~ "PHON",
+    grepl(pattern = "United Australia Party", z) |
+      grepl(pattern = "Unites Australia Party", z) ~ "UAP",
+    TRUE ~ "OTH"
+  )
+  return(z)
+}
+
+parse_aec_party <- function(affiliation_abb){
+  party_group   <-  case_when(
+    affiliation_abb == "ALP" ~ "Labor",
+    affiliation_abb %in% c("LP","LNP","NP","CLP") ~ "Coalition",
+    affiliation_abb %in% c("GRN","GVIC") ~ "GRN",
+    affiliation_abb == "UAPP" ~ "UAP",
+    affiliation_abb == "ON" ~ "PHON",
+    affiliation_abb=="IND" ~ "IND",
+    TRUE ~ "OTH")
+  
+  return(party_group)
+}
+```
+
+```{r HOUSE MARKETS AGGREGATE SUMMARY}
+now <- Sys.time()
+yesterday <- now - 24 * 3600
+d_last <- d %>%
+  filter(lab %in% theStates) %>%
+  group_by(event) %>%
+  filter(datetime == max(datetime)) %>% ## most recent price for each seat/outcome
+  ungroup() %>%
+  mutate(event = str_squish(str_remove(event, pattern = "\\([A-Z]{1,}\\).*$")))
+
+## match each candidate name into the AEC candidates data
+a <- d_last %>%
+  mutate(candidate_string = str_squish(str_remove(outcomes, pattern = "\\("))) %>%
+  mutate(candidate_string = str_squish(str_remove(candidate_string, pattern =
+                                                    "\\)"))) %>%
+  mutate(candidate_string = tolower(paste(event, candidate_string)))
+
+b <- candidates %>%
+  filter(ballot_position < 900) %>%
+  mutate(candidate_string = tolower(paste(
+    Division,
+    str_remove(name, pattern = "\\,|\\-"),
+    affiliation_name
+  ))) %>%
+  mutate(indx = 1:n())
+
+keywords <- strsplit(b$candidate_string, ' ')
+## return the index/candidate_id of the element of keywords with highest number of matches
+getMatch <- function(x) {
+  s <- unlist(lapply(keywords, function(k) {
+    sum(x %in% k)
+  }))
+  indx <- which.max(s)
+  return(indx)
+}
+
+d_last <- a %>%
+  mutate(text = str_split(candidate_string, "\\s+"),
+         indx = map_dbl(text,  ~ getMatch(.x))) %>%
+  left_join(b %>%
+              select(Division, candidate_id, affiliation_abb, indx),
+            by = "indx") %>%
+  select(-indx, -starts_with("candidate_string"), -text, -event) %>%
+  rename(state = lab) %>%
+  mutate(outcomes_collapsed = parse_aec_party(affiliation_abb)) %>%
+  mutate(prob = if_else(is.infinite(prob), 0, prob)) %>%
+  group_by(Division) %>%
+  mutate(
+    prob_nls = ifelse(prob < .10, 0, prob),
+    prob_nls = prob_nls / sum(prob_nls, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  mutate(Division = ifelse(grepl(pattern = "Sugars", outcomes), "Spence", Division)) %>%
+  filter(!grepl(pattern = "Kim Prior", outcomes)) %>% 
+  filter(!grepl(pattern = "Tom Sellers",outcomes))
+
+s1 <- d_last %>%
+  group_by(outcomes_collapsed) %>%
+  summarise(
+    `Expected Seats` = sum(prob, na.rm = TRUE),
+    `Expected Seats (no long-shots)` = sum(prob_nls, na.rm = TRUE)
+  ) %>%
+  ungroup() %>%
+  rename(Party = outcomes_collapsed) %>%
+  arrange(Party)
+
+## highest prob in each seat, summed by party over seats
+s2 <- d_last %>%
+  group_by(Division) %>%
+  mutate(leader = prob_nls == max(prob_nls, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(leader = replace_na(leader, FALSE)) %>%
+  group_by(Division) %>%
+  mutate(leader = leader / sum(leader, na.rm = TRUE)) %>%
+  ungroup() %>%
+  group_by(outcomes_collapsed) %>%
+  summarise(n = sum(leader, na.rm = TRUE)) %>%
+  ungroup() %>%
+  rename(Party = outcomes_collapsed, Leads = n) %>%
+  arrange(Party)
+
+s <- left_join(s1,
+               s2,
+               by = "Party") %>%
+  left_join(winning_party %>%
+              count(winner) %>%
+              rename(Party = winner,
+                     n_current = n),
+            by = "Party") %>%
+  mutate(
+    delta = Leads - n_current,
+    delta = str_remove(as.character(delta), '\\.0{1,}$'),
+    delta = ifelse(delta > 0,
+                   paste("+", delta, sep = ""),
+                   delta),
+    Leads = str_remove(as.character(Leads), '\\.0{1,}$')
+  )
+```
+
+```{r}
+plotData_fp <- left_join(
+  fp %>%
+    filter(v > 0),
+  d_last %>%
+    select(State = state,
+           prices, prob, datetime, Division, candidate_id, prob_nls),
+  by = c("Division", "candidate_id")
+) %>%
+  group_by(Division) %>%
+  mutate(prob_nls = prob_nls / sum(prob_nls, na.rm = TRUE) * 100) %>%
+  mutate(prob = prob / sum(prob, na.rm = TRUE) * 100) %>%
+  ungroup() %>%
+  rename(
+    prob_raw = prob,
+    prob = prob_nls
+  )
+
+check <- plotData_fp %>%
+  filter(is.na(prob))
+
+plotData_tcp <- left_join(
+  tcp %>%
+    filter(v > 0),
+  d %>%
+    filter(lab %in% theStates) %>%
+    group_by(event) %>%
+    filter(datetime == max(datetime)) %>%
+    ungroup() %>%
+    mutate(event = str_squish(
+      str_remove(event, pattern = "\\([A-Z]{1,}\\).*$")
+    )) %>%
+    mutate(outcomes_collapsed = parse_outcomes(outcomes)) %>%
+    mutate(prob_nls = ifelse(prob < .10, 0, prob)) %>%
+    group_by(lab, event, outcomes_collapsed) %>%
+    summarise(
+      prob_nls = sum(prob_nls, na.rm = TRUE),
+      prob_raw = sum(prob, na.rm = TRUE),
+      prices = min(prices, na.rm = TRUE)
+    ) %>%
+    ungroup() %>%
+    group_by(event) %>%
+    mutate(prob_nls = prob_nls / sum(prob_nls, na.rm = TRUE) * 100) %>%
+    mutate(prob_raw = prob_raw / sum(prob_raw, na.rm = TRUE) * 100) %>%
+    ungroup() %>%
+    rename(
+      prob = prob_nls,
+      State = lab,
+      Division = event
+    ),
+  by = c("Division", "outcomes_collapsed")
+) %>%
+  group_by(Division) %>%
+  mutate(
+    winner = name[which.max(per)],
+    winning_party = affiliation_abb[which.max(per)],
+    votes_winner = max(per)
+  ) %>%
+  ungroup()
+
+tmp <- plotData_tcp %>%
+  filter(outcomes_collapsed %in% c("Labor", "Coalition")) %>%
+  mutate(votes = per)
+
+plotData_fp <- left_join(
+  plotData_fp,
+  plotData_tcp %>%
+    select(Division, winner, winning_party) %>%
+    distinct(),
+  by = "Division"
+) %>%
+  group_by(Division) %>%
+  mutate(r_actual = n() + 1 - rank(per)) %>%
+  mutate(r_prob = n() + 1 - rank(prob)) %>%
+  ungroup() %>%
+  mutate(
+    winning_party = case_when(
+      winning_party %in% c("LP", "NP", "LNP") ~ "Coalition",
+      winning_party == "ALP" ~ "Labor",
+      winning_party %in% c("GVIC", "GRN") ~ "GRN",
+      winning_party == "IND" ~ "IND",
+      TRUE ~ "OTH"
+    )
+  )
+```
+
+# Party to form government {#sec-party-to-form-government}
+
+```{r}
+national_market <- d %>%
+  filter(grepl(lab, pattern = "Next Sworn")) %>%
+  mutate(prob = prob * 100) %>%
+  mutate(prob_nls = ifelse(prob > 10, prob, 0)) %>%
+  group_by(datetime) %>%
+  mutate(prob_nls = prob_nls / sum(prob_nls) * 100) %>%
+  ungroup() %>%
+  mutate(indx = match(datetime, sort(unique(datetime)))) %>%
+  filter(outcomes != "Any Other")
+write_csv(national_market, file = "national_market.csv")
+
+alp_avg <- national_market %>%
+  filter(outcomes == "Labor") %>%
+  mutate(d = as.numeric(difftime(datetime, lag(datetime)))) %>%
+  filter(!is.na(d)) %>%
+  summarise(z = weighted.mean(prob_nls, d)) %>%
+  pull(z)
+```
+
+Over the 60 days prior to the election, Sportsbet's headline "party to form next government" market had Labor always as favourite (see @fig-national-market), save for a few hours on 18 April 2022 when the Coalition briefly was priced at 1.87 to Labor's 1.90, corresponding to an IPOW for Labor of 49.6%. Labor's shortest odds were recorded on 15 May at 1.25, corresponding to an IPOW of 77.1%. Labor's average IPOW over the 60 day period was `r sprintf(alp_avg,fmt="%2.1f")`%.
+
+```{ojs}
+nat_market = FileAttachment("national_market.csv").csv({ typed: true });
+ymax = d3.max(nat_market, d => d.prob_nls)
+```
+
+```{ojs}
+//| label: fig-national-market
+//| fig-cap: "Labor and Coalition implied probabilities of winning in Sportsbet's headline \"party to form next government\" betting market, 20 March to 21 May 2022.  IPOWs renormalised to sum to 100% after removing long-shot \"Other\" outcome.  Roll over each line to display prices."
+np = Plot.plot({
+  width: 1000,
+  marginTop: 80,
+  marginBottom: 60,
+  height: 600,
+  
+  style: {
+    fontSize: "13px"
+  },
+  
+  x: {
+    label: null,
+    ticks: null,
+    tickFormat: null,
+    type: "utc"
+  },
+
+  y: {
+    label: "Implied probability of winning ↑"
+  },
+
+  color: {
+    domain: ["Coalition",  "Labor"],
+    range:  ["#009de3","#ed1b35"]
+  },
+  
+  marks: [
+  
+    Plot.ruleY([50],{stroke: "#ccc"}),
+  
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-11 10")],{stroke: "#ccc"}),
+    Plot.text(
+    ["Albanese\nunemployment\ngaffe"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-04-11 10"),
+        y: ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-20 19")], {stroke: "#ccc"}),
+    Plot.text(
+    ["1st\ndebate"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-04-20 19"),
+        y: ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    //Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-21 12")],{stroke: "#ccc"}),
+    //Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-29 12")],{stroke: "#ccc"}),
+    Plot.link([0],
+      { x1: d3.timeParse("%Y-%m-%d %H")("2022-04-21 12"),
+        x2: d3.timeParse("%Y-%m-%d %H")("2022-04-29 12"),
+        y1: ymax-1,
+        y2: ymax-1,
+        stroke: "#ccc"
+      }
+    ),
+    
+    Plot.text(
+    ["Albanese\nCOVID\nisolation"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-04-25 12"),
+        y: ymax-1,
+        dx: 0,
+        dy: -2,
+        textAnchor: "middle",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-05-03 14")],{stroke: "#ccc"}),
+    Plot.text(
+    ["RBA\nrate\nrise"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-05-03 14"),
+        y: ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-05-08 21")],{stroke: "#ccc"}),
+    Plot.text(
+    ["2nd\ndebate"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-05-08 21"),
+        y: ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-05-11 21")],{stroke: "#ccc"}),
+    Plot.text(
+    ["3rd\ndebate"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-05-11 21"),
+        y: ymax,
+        dx: 3,
+        dy: 0,
+        textAnchor: "start",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    
+    Plot.lineY(nat_market, 
+               {
+                 x: "datetime", 
+                 y: "prob_nls", 
+                 z: "outcomes",
+                 stroke: "outcomes",
+                 strokeWidth: 2,
+                 curve: "step"
+                 //title: (d) => d.outcomes + " " + d3.timeFormat("%_I%p %e %b")(d.datetime) + 
+                //  "\n" + "Price: " + d3.format(".2f")(d.prices) + 
+                //  "\n" + "IPOW: " + d3.format(".1f")(d.prob_nls)
+               }
+              )
+            
+  ]
+})
+
+```
+
+```{ojs}
+//| echo: false
+//| output: false
+xscale_original = np.scale("x")
+yscale_original = np.scale("y")
+
+weekLabels =  d3.timeHours(
+    d3.timeHour.offset(d3.timeDay.floor(xscale_original["domain"][0]),12),
+    d3.timeHour.offset(d3.timeDay(new Date("2022-05-21")),12),
+    7*24)
+  .concat(d3.timeHour.offset(d3.timeDay(new Date("2022-05-21")),12))  
+
+dl = d3.select(np)
+  .selectAll(".xaxis-day-labels")
+  .data(weekLabels)
+  .join("text")
+  .attr("x",function(d){ return xscale_original["apply"](d); })
+  .attr("y",yscale_original.range[0]+14)
+  .attr("class","xaxis-day-labels")
+  .text(function(d){ return d3.timeFormat("%e")(d); })
+
+ml = d3.select(np)
+  .selectAll(".xaxis-month-labels")
+  .data(weekLabels)
+  .join("text")
+  .attr("x",function(d){ return xscale_original["apply"](d); })
+  .attr("y",yscale_original.range[0]+26)
+  .attr("class","xaxis-month-labels")
+  .text(function(d){ return d3.timeFormat("%b")(d); })
+
+dayTicks  =  d3.timeDays(
+  xscale_original["domain"][0],
+  d3.timeDay.offset(xscale_original["domain"][1],1)
+  )
+  
+d3.select(np)
+  .selectAll(".xaxis-ticks")
+  .data(dayTicks)
+  .join("line")
+  .attr("x1",function(d){ return xscale_original["apply"](d); })
+  .attr("x2",function(d){ return xscale_original["apply"](d); })
+  .attr("stroke","black")
+  .attr("y1",yscale_original["range"][0])
+  .attr("y2",yscale_original["range"][0]+4)
+  .attr("class","xaxis-ticks");  
+
+np_ref_line = d3.select(np)
+  .append("line")
+  .attr("class","vref_line")
+  .attr("x1",0)
+  .attr("x2",0)
+  .attr("y1",yscale_original["range"][0])
+  .attr("y2",yscale_original["range"][1]);
+ 
+np_coalition = d3.select(np)
+    .selectAll(".np_coalition_info")
+    .data([""])
+    .join("g")
+    .attr("class", "np_coalition_info")
+    .style("pointer-events", "none");
+    
+np_labor = d3.select(np)    
+  .selectAll(".np_labor_info")
+  .data([""])
+  .join("g")
+  .attr("class", "np_labor_info")
+  .style("pointer-events", "none");
+
+function onlyUnique(value, index, self) {
+  return self.indexOf(value) === index;
+}
+
+dt = [... new Set(nat_market.map(d => +d.datetime))];
+
+// Function to position the tooltip
+my_hover = (tip, pos, text, yloc, direction, strokeCol) => {
+  const side_padding = 10;
+  const vertical_padding = 2;
+  const vertical_offset = direction == "above" ? 12 : -12;
+
+  // Empty it out
+  tip.selectAll("*").remove();
+
+  // Append the text
+  tip
+    .style("text-anchor", "middle")
+    .style("pointer-events", "none")
+    .attr("transform", `translate(${pos[0]}, ${yloc})`)
+    .selectAll("text")
+    .data(text)
+    .join("text")
+    .style("dominant-baseline", "ideographic")
+    .text((d) => d)
+    .attr("y", (d, i) => (i - (text.length - 1)) * 18 - vertical_offset)
+    .style("font-weight", (d, i) => (i === 0 ? "bold" : "normal"));
+
+  const bbox = tip.node().getBBox();
+
+  // Add a rectangle (as background)
+  tip
+    .append("rect")
+    .attr("y", bbox.y - vertical_padding)
+    .attr("x", bbox.x - side_padding)
+    .attr("width", bbox.width + side_padding * 2)
+    .attr("height", bbox.height + vertical_padding * 2)
+    .style("fill", "white")
+    .style("stroke", strokeCol)
+    .lower();
+    
+  tip
+    .append("line")
+    .attr("x1",bbox.x + bbox.width/2)
+    .attr("x2",bbox.x + bbox.width/2)
+    .attr("y1",bbox.y + vertical_padding)
+    .attr("y2",this.y)
+    .style("stroke","#eee")
+    .lower();
+}
+
+function make_label(d){
+  const dt = d3.timeFormat("%_I%p %e %b")(d3.utcParse("%Q")(d.map(d => +d.datetime)));
+  const price = d3.format(".2f")(d.map(d => d.prices));
+  const prob =  d3.format(".1f")(d.map(d => d.prob_nls));
+  return dt + "\n" + "Price: " + price + "\n" + "IPOW: " + prob + "%";
+}
+
+function mouseover_function(event){
+  const pointer = d3.pointer(event, this);
+  var x0 = +xscale_original["invert"](pointer[0]);
+  var i = d3.bisectLeft(dt,x0);
+    //console.log("i = " + i);
+    //console.log("will try to match " + dt[i]);
+  var d_labor = nat_market.filter(function(d){ return d.indx==(i+1) & d.outcomes == "Labor";});
+    //console.log(d_labor);
+  var yloc_labor = yscale_original["apply"](d_labor.map(d => d.prob_nls));
+    //console.log(yloc_labor);
+  var d_coalition = nat_market.filter(function(d){ return d.indx==(i+1) & d.outcomes == "Coalition";});     
+  var yloc_coalition = yscale_original["apply"](d_coalition.map(d => d.prob_nls));
+  console.log(yloc_coalition);
+    
+  // move line                      
+  d3.select(".vref_line")
+      .attr("x1",pointer[0])
+      .attr("x2",pointer[0])
+      .attr("stroke","#CCCCCC3F");
+    
+  // move text boxes
+  var delta = yloc_coalition - yloc_labor;
+  var offset = delta < 80 ? 80 : 0;
+  var theText_coalition = make_label(d_coalition);
+  d3.select(".np_coalition_info")
+    .call(my_hover, pointer,
+      theText_coalition.split("\n"),
+      yloc_coalition,
+      "above",
+      "#009de3")
+      .style("opacity",1);
+    
+  var theText_labor = make_label(d_labor);
+  console.log(theText_labor.split("\n"));
+  d3.select(".np_labor_info")
+    .call(my_hover, pointer,
+      theText_labor.split("\n"),
+      yloc_labor - offset,
+      "above",
+      "#ed1b35")
+      .style("opacity",1);    
+}
+  
+np_rect = d3.select(np)
+  .append("rect")
+  .attr("x",xscale_original["range"][0])
+  .attr("y",yscale_original["range"][1])
+  .attr("width",Math.abs(xscale_original["range"][1]-xscale_original["range"][0]))
+  .attr("height",Math.abs(yscale_original["range"][1]-yscale_original["range"][0]))
+  .attr("fill","transparent")
+  .attr("z-index",0)
+  .attr("stroke","transparent")
+  .on("mousemove mouseenter",mouseover_function)
+  .on("mouseout",
+    function(event,datum){
+      d3.select(".vref_line").attr("stroke","transparent");
+      d3.select(".np_labor_info").style("opacity",0);
+      d3.select(".np_coalition_info").style("opacity",0);
+    }
+  );
+```
+
+# Betting markets vs polls {#sec-betting-markets-vs-polls}
+
+@fig-polls shows a small trend towards the Coalition in national polls fielded during the same sixty day period. Almost every poll fielded in this period had the Coalition's two-party preferred result well below 50% and the resulting poll average suggested the Coalition was performing two to three points below its 2019 polls.
+
+```{ojs}
+//| label: fig-polls
+//| fig-cap: "Poll average, Coalition two-party preferred, 20 March to 21 May 2022, computed using methods described in @mansilloNationalPollingOther2020 and Jackman [-@jackmanBayesianAnalysisSocial2009; -@jackman2005]. Points indicate polls published during the 2022 campaign; horizontal lines cover field period and publication date; roll over each point to show information.   The 2019 poll average is also displayed (time shifted so as to correspond to the 2022 campaign period), computed using the same assumptions used in computing the 2022 poll average, along with the 2019 result."
+p_polls = Plot.plot({
+  width: 1000,
+  marginTop: 80,
+  marginBottom: 60,
+  height: 600,
+  
+  style: {
+    fontSize: "13px"
+  },
+  
+  x: {
+    label: null,
+    ticks: null,
+    tickFormat: null,
+    type: "utc"
+  },
+
+  y: {
+    label: "Coalition 2PP (%) ↑",
+    ticks: 9,
+    domain: [pdata_ymin, pdata_ymax]
+  },
+
+  marks: [
+  
+    Plot.areaY(pdata,
+    {
+      x: "date",
+      y1: "lo",
+      y2: "up",
+      fill: "#eee"
+    }
+    ),
+    
+    Plot.lineY(
+      pdata,
+      {
+        x: "date", 
+        y: "y", 
+        strokeWidth: 2,
+        stroke: "#009de3",
+        curve: "step"
+                 //title: (d) => d.outcomes + " " + d3.timeFormat("%_I%p %e %b")(d.datetime) + 
+                //  "\n" + "Price: " + d3.format(".2f")(d.prices) + 
+                //  "\n" + "IPOW: " + d3.format(".1f")(d.prob_nls)
+      }
+    ),
+  
+  Plot.ruleY(polls,
+    {
+      x1: (d) => d3.timeParse("%Y-%m-%dT%H:%M:%SZ")(d.startDate),
+      x2: (d) => d3.timeParse("%Y-%m-%dT%H:%M:%SZ")(d.endDate),
+      y: "y_plot",
+      stroke: "peru"
+    }
+    ),
+    
+    Plot.dot(polls,
+    { x: (d) => d3.timeParse("%Y-%m-%dT%H:%M:%SZ")(d.midDate),
+      y: "y_plot",
+       title: (d) => d.Pollster + "\n" + 
+        d3.timeFormat("%e %b")(d3.timeParse("%Y-%m-%dT%H:%M:%SZ")(d.startDate)) + 
+        " - " + 
+        d3.timeFormat("%e %b")(d3.timeParse("%Y-%m-%dT%H:%M:%SZ")(d.endDate)) + 
+        "\n" + 
+        "Published " + d3.timeFormat("%e %b")(d3.timeParse("%Y-%m-%dT%H:%M:%SZ")(d.PublicationDate)) + 
+        "\n" + 
+        "Coalition 2PP: " + d3.format(".1f")(d.y) + "%"
+    }
+    ),
+    
+    Plot.ruleY(polls,
+    {
+      x1: (d) => d3.timeParse("%Y-%m-%dT%H:%M:%SZ")(d.endDate),
+      x2: (d) => d3.timeParse("%Y-%m-%dT%H:%M:%SZ")(d.PublicationDate),
+      y: "y_plot",
+      stroke: "#333"
+    }
+    ),
+  
+  Plot.text(
+      [ "2022 poll average" ],
+      {
+        x: d3.timeParse("%Y-%m-%d")("2022-05-21"),
+        y: d3.map(pdata, d => d.y).pop(),
+        dy: 10,
+        dx: 12,
+        lineAnchor: "top",
+        text: (d) => d,
+        textAnchor: "end",
+        fill: "#555"
+      }
+      ),
+  
+  Plot.lineY(
+      pdata_2019,
+      {
+        x: "date", 
+        y: "y", 
+        strokeWidth: 2,
+        stroke: "#009de37f",
+        curve: "step"
+                 //title: (d) => d.outcomes + " " + d3.timeFormat("%_I%p %e %b")(d.datetime) + 
+                //  "\n" + "Price: " + d3.format(".2f")(d.prices) + 
+                //  "\n" + "IPOW: " + d3.format(".1f")(d.prob_nls)
+      }
+    ),
+  
+    Plot.ruleY([47.87], {stroke: "#333"}),
+    
+    Plot.text(
+      [ "2022 result" ],
+      {
+        x: d3.timeParse("%Y-%m-%d")("2022-05-21"),
+        y: 47.87,
+        dy: -3,
+        dx: 12,
+        lineAnchor: "bottom",
+        text: (d) => d,
+        textAnchor: "end",
+        fill: "#333"
+      }
+      ),
+  
+    Plot.ruleY([51.53], {stroke: "#333"}),
+    
+    Plot.text(
+      [ "2019 result" ],
+      {
+        x: d3.timeParse("%Y-%m-%d")("2022-05-21"),
+        y: 51.53,
+        dy: -3,
+        dx: 12,
+        lineAnchor: "bottom",
+        text: (d) => d,
+        textAnchor: "end",
+        fill: "#333"
+      }
+      ),
+      
+    Plot.text(
+      [ "2019 poll average" ],
+      {
+        x: d3.timeParse("%Y-%m-%d")("2022-05-21"),
+        y: 49.1,
+        dy: -3,
+        dx: 12,
+        lineAnchor: "bottom",
+        text: (d) => d,
+        textAnchor: "end",
+        fill: "#333"
+      }
+      ),  
+  
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-11 10")],{stroke: "#ccc"}),
+    
+    Plot.text(
+    ["Albanese\nunemployment\ngaffe"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-04-11 10"),
+        y: pdata_ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-20 19")], {stroke: "#ccc"}),
+    Plot.text(
+    ["1st\ndebate"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-04-20 19"),
+        y: pdata_ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    //Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-21 12")],{stroke: "#ccc"}),
+    //Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-29 12")],{stroke: "#ccc"}),
+    Plot.link([0],
+      { x1: d3.timeParse("%Y-%m-%d %H")("2022-04-21 12"),
+        x2: d3.timeParse("%Y-%m-%d %H")("2022-04-29 12"),
+        y1: pdata_ymax,
+        y2: pdata_ymax,
+        stroke: "#ccc"
+      }
+    ),
+    
+    Plot.text(
+    ["Albanese\nCOVID\nisolation"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-04-25 12"),
+        y: pdata_ymax,
+        dx: 0,
+        dy: -2,
+        textAnchor: "middle",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-05-03 14")],{stroke: "#ccc"}),
+    Plot.text(
+    ["RBA\nrate\nrise"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-05-03 14"),
+        y: pdata_ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-05-08 21")],{stroke: "#ccc"}),
+    Plot.text(
+    ["2nd\ndebate"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-05-08 21"),
+        y: pdata_ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-05-11 21")],{stroke: "#ccc"}),
+    Plot.text(
+    ["3rd\ndebate"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-05-11 21"),
+        y: pdata_ymax,
+        dx: 3,
+        dy: 0,
+        textAnchor: "start",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    )
+            
+  ],
+  
+  tooltip: {
+    fontSize: "9px"
+  }
+  
+  }
+)
+```
+
+```{ojs}
+p_polls_xscale_original = p_polls.scale("x")
+p_polls_yscale_original = p_polls.scale("y")
+
+p_polls_dl = d3.select(p_polls)
+  .selectAll(".xaxis-day-labels")
+  .data(weekLabels)
+  .join("text")
+  .attr("x",function(d){ return p_polls_xscale_original["apply"](d); })
+  .attr("y",p_polls_yscale_original.range[0]+14)
+  .attr("class","xaxis-day-labels")
+  .text(function(d){ return d3.timeFormat("%e")(d); })
+
+p_polls_ml = d3.select(p_polls)
+  .selectAll(".xaxis-month-labels")
+  .data(weekLabels)
+  .join("text")
+  .attr("x",function(d){ return p_polls_xscale_original["apply"](d); })
+  .attr("y",p_polls_yscale_original.range[0]+26)
+  .attr("class","xaxis-month-labels")
+  .text(function(d){ return d3.timeFormat("%b")(d); })
+
+p_polls_do_ticks = d3.select(p_polls)
+  .selectAll(".xaxis-ticks")
+  .data(dayTicks)
+  .join("line")
+  .attr("x1",function(d){ return p_polls_xscale_original["apply"](d); })
+  .attr("x2",function(d){ return p_polls_xscale_original["apply"](d); })
+  .attr("stroke","black")
+  .attr("y1",p_polls_yscale_original["range"][0])
+  .attr("y2",p_polls_yscale_original["range"][0]+4)
+  .attr("class","xaxis-ticks");  
+```
+Poll based estimates of the Coalition's two-party preferred vote were biased downwards in 2019, by almost three percentage points. Even if 2022 polls were carrying the unusually large degree of bias seen in 2019, the 2022 polls strongly suggested that the Coalition was performing well below its 2019 result, almost surely on track for two-party preferred result well below 50% and quite likely below 49% (the outcome in the 1998 election when the Coalition was nonetheless able to form government).
+
+In short, the polls strongly and consistently indicated that the Coalition would *not* form government after the election. Compared to the trajectory of the betting markets, a poll-based forecast in 2022 was reasonably accurate (missing the actual two-party preferred result by about a percentage point) and consistent over the campaign period.
+
+In @jackmanAllThatGlitters2015 I provide a detailed analysis of the interaction between betting markets and polls in the lead-up to the 2013 Australian federal election.  
+
+# House of Representatives seats
+
+<a href="#tab-house-summary">Table 1</a> presents an assessment of the aggregate performance of Sportsbet seat markets, examining counts of seats won against expected counts based on IPOWS.   Three counts are presented: 
+
+- using raw, unadjusted IPOWs and the fact that the expected count of a set of uncertain events is equal to the sum of the probabilities of each event.   The totals for each party shown in the "Expected seats" column of <a href="#tab-house-summary">Table 1</a> are simply the sum of each party's IPOWs over the 151 House of Representative seat markets.
+
+- again summing probabilities over seats by party, but setting IPOWS < 10% to zero and renormalising the remaining non-zero probabilities to sum to one within each division. 
+
+- The third column counts seats where the indicated party has the highest IPOW (or, equivalently, has the shortest odds or prices and is the market favourite in a given seat).
+
+Sportsbet's markets substantially over-estimated the Coalition's performance, with the Coalition ending the campaign as favourite in 65 seats; the Coalition won seven fewer.  Independents ending the campaign as favourite in only four seats, despite going on to win ten seats.   Similarly, Greens candidates ended the campaign as favourites in just one seat but won four.  
+
+The extent of longshot bias is apparent when summing across all 151 seats. For instance, UAP and PHON IPOWs should have translated into at least 1 House seat for each party, but none of the 151 UAP House of Representatives candidates won more than 10% of first preferences.   Similarly, no PHON candidate won more than exceed 15% of first preferences and none were elected, despite Sportsbet IPOWs indicating an expected haul of 1.5 seats. 
+
+```{r house-summary}
+cc <- withTags(
+  table(thead(
+    style = css(font.size = "14px", padding.bottom = "0px"),
+    tr(
+      style = css(vertical.align = "bottom"),
+      th(class = "my_th"),
+      #1
+      th(class = "my_th"),
+      #2
+      th(class = "my_th", "Expected"),
+      #3
+      th(class = "my_th", "Seats"),
+      #4
+      th(class = "my_th", ""),
+      #5
+      th(class = "my_th")             #6
+    ),
+    tr(
+      style = css(vertical.align = "bottom"),
+      th(class = "my_th"),
+      #1
+      th(class = "my_th", "Expected"),
+      #2
+      th(class = "my_th", "seats"),
+      #3
+      th(class = "my_th", "where"),
+      #4
+      th(class = "my_th",
+         div(style = css(text.align = "right"),
+             "Seats")),
+      #5
+      th(class = "my_th") #6
+    ),
+    tr(
+      style = css(vertical.align = "bottom"),
+      th(class = "my_th_2",
+         div(style = css(text.align = "left"), "Party")),
+      #1
+      th(class = "my_th_2", "seats"),
+      #2
+      th(class = "my_th_2", "(no long shots)"),
+      th(class = "my_th_2", "favourite"),
+      th(class = "my_th_2",
+         div(style = css(text.align = "right"),
+             "won")),
+      th(class = "my_th_2",
+         div(style = css(text.align = "right"),
+             "Error"))
+    )
+    )
+  )
+)
+
+datatable(
+  s,
+  rownames = FALSE,
+  container = cc,
+  class = "row-border",
+  elementId = "tab-house-summary",
+  extensions = c("Buttons", "RowGroup"),
+  callback = JS("$('table').alignColumn([1,3]);"),
+  caption =
+    paste(
+      "Table 1: Aggregate performance of Sportsbet betting markets in 151 House of Representatives divisions.",
+      "Sportsbet prices in each market are converted to implied probabilities of winning for each candidate.",
+      "'Expected seats' is the sum of these IPOWs across all 151 divisions for each indicated party.",
+      "The 'no long shots' calculation repeats this after setting IPOWS < 10% to zero and renormalising",
+      "the non-zero probabilities to sum to one within each division. The third column counts seats",
+      "where the indicated party has the highest IPOW.",
+      "'Error' is the difference between front-runner status based on Sportsbet's closing prices",
+      "and actual election outcomes.  Analysis based on final Sportsbet prices, downloaded between",
+      str_remove(strftime(min(d_last$datetime), format = "%I:%M%p"), pattern =
+                   "^0"),
+      "and",
+      str_remove(strftime(max(d_last$datetime), format = "%I:%M%p %Z"), pattern =
+                   "^0"),
+      "on election day, 21 May 2022."
+    ),
+  options = list(
+    dom = "Bt",
+    buttons = c("copy", "csv", "excel"),
+    searching = FALSE,
+    paging = FALSE,
+    ordering = FALSE,
+    columnDefs = list(
+      list(targets = 0, className = "dt-head-left"),
+      list(targets = 0, className = "dt-left")
+    )
+  )
+) %>%
+  formatRound(columns = 2:3, digits = 1)
+```
+
+```{r}
+d <- left_join(
+  winning_party,
+  d_last %>%
+    group_by(Division) %>%
+    slice(which.min(prices)) %>%
+    ungroup() %>%
+    select(Division, state, fav = outcomes_collapsed),
+  by = "Division"
+  ) 
+
+tab_tmp <- left_join(
+  xtabs( ~ fav + winner, data = d) %>%
+    as_tibble(),
+  d %>%
+    mutate(label = paste(Division, paste0("(", state, ")"))) %>%
+    mutate(fav = factor(fav), winner = factor(winner)) %>%
+    group_by(fav, winner) %>%
+    summarise(label = paste0("\n", paste(label, collapse = "\n"))) %>%
+    ungroup(),
+  by = c("fav", "winner")
+) %>%
+  mutate(label = if_else(n < 6, label, NA_character_)) %>%
+  mutate(n = as.character(n)) %>%
+  mutate(
+    x = match(winner, sort(unique(winner))),
+    y = match(fav, sort(unique(fav))),
+    label = replace_na(label, "zzz")
+  )
+  
+```
+
+```{r}
+ojs_define(ttt = tab_tmp)
+```
+
+```{ojs}
+tab = transpose(ttt)
+```
+
+```{ojs}
+//| echo: false
+//| output: false
+d3.select(p)
+  .append("g")
+  .append("text")
+  .attr("y",yloc)
+  .attr("x",xloc)
+  .attr("text-anchor","end")
+  .attr("dy","0.32em")
+  .text("Favourite");
+```
+
+```{ojs}
+//| echo: false
+//| output: false
+yloc = d3.median(p.scale("y")["range"]);
+//yloc = p.scale("y")["apply"]("IND") + p.scale("y")["bandwidth"]/2;
+xloc = p.scale("x")["range"][0] - p.scale("x")["step"];
+```
+
+## Predictions versus outcomes {#sec-house-predictions}
+
+In 16 divisions the Sportsbet market favourite was not elected; these appear on the off-diagonal elements of the classification table in @fig-sportsbet-classification. 55 of the Coalition's 58 seat wins were correctly anticipated by the Sportsbet market, as were 73 of Labor's 77 seats.
+
+```{ojs}
+//| label: fig-sportsbet-classification
+//| fig-cap: "Cross-tabulation of party as Sportsbet favourite by party winning each of 151 House of Representatives seats.  16 seats not won by the Sportsbet favourite are in the highlighted off-diagonal cells; roll over the cells to display division names."
+
+p = Plot.plot(
+  {
+    width: 600,
+    height: 300,
+    padding: 0.05,
+    grid: false,
+    marginLeft: 180,
+    marginTop: 100,
+  
+  style: {
+    fontSize: "14px"
+  },
+  
+  x: {
+    label: "Winner",
+    labelOffset: 60,
+    axis: "top",
+    tickSize: 0
+  },
+  
+  y: {
+    label: null,
+    tickSize: 0
+  },
+  
+  marks: [
+    Plot.cell(tab,
+    {
+      x: "winner",
+      y: "fav",
+      fill: (d) => d.x != d.y & d.n != "0" ? "peru" : "#eee"
+    }
+    ),
+  
+    Plot.text(tab,
+      {
+        filter: (d) => d.label=="zzz",
+        x: "winner",
+        y: "fav",
+        text: "n",
+        dx: 6,
+        textAnchor: "end"
+      }
+    ),
+    
+    Plot.text(tab,
+      {
+        filter: (d) => d.label!="zzz",
+        x: "winner",
+        y: "fav",
+        text: "n",
+        dx: 6,
+        textAnchor: "end",
+        title: "label"
+      }
+    )
+      
+  ],
+  
+  tooltip: {
+    fontSize: "9px"
+  }
+  
+  });
+```
+
+## Loses by betting market favourites {#sec-loses-by-favourites}
+
+```{r loses-wins-front-runner}
+loses_wins_front_runner <-
+  left_join(
+    d_last,
+    plotData_fp %>%
+      select(per_fp = per, candidate_id,
+             winner, winning_party, r_prob, r_actual),
+    by = "candidate_id"
+  ) %>%
+  left_join(
+    plotData_tcp %>%
+      group_by(Division) %>%
+      mutate(candidate_id_winner = candidate_id[which.max(per)]) %>%
+      ungroup() %>%
+      select(per_tcp = per, candidate_id, candidate_id_winner),
+    by = "candidate_id"
+  ) %>%
+  group_by(Division) %>%
+  mutate(favorite = outcomes[which.max(prob)]) %>%
+  mutate(correct = candidate_id[which.max(prob)] == candidate_id_winner) %>%
+  ungroup()
+
+misses_tmp <- loses_wins_front_runner %>%
+  group_by(Division) %>%
+  mutate(winner = candidate_id == candidate_id_winner) %>%
+  filter(winner | (outcomes == favorite)) %>%
+  mutate(ok = all(correct)) %>%
+  ungroup() %>%
+  filter(!ok) %>%
+  mutate(prob_nls = 100 * prob_nls) %>%
+  mutate(winner = replace_na(winner, FALSE)) %>%
+  group_by(Division) %>%
+  mutate(delta = abs(prob_nls[which(winner)] - per_tcp[which(winner)])) %>%
+  ungroup() %>%
+  arrange(desc(delta), desc(winner))
+```
+
+<a href="#tab-loses-favourites">Table 2</a> provides additional detail for the 16 seats where the Sportsbet favourite was not elected. These are a mix of 13 seats unexpectedly changing hands and 3 Coalition retentions:
+
+-   the three Green wins in Brisbane, Griffith and Ryan; Brisbane produced the biggest surprise for the betting markets, the Green candidate winning the seat from 3rd place on 1st preferences and ending the campaign as a long-shot (IPOW of 9.6%).
+
+-   five of the six wins of so-called "teal" independents: Wentworth, Mackellar, North Sydney, Kooyong and Curtin (Zoe Daniel ended the campaign as the Sportsbet favourite in Goldstein).
+
+-   the Coalition retaining the two Tasmanian seats of Bass and Braddon and Longman (QLD).
+
+-   the large swings to Labor in Western Australia, with Sportsbet prices incorrectly tipping the Coalition to retain Tangney and Hasluck.
+
+-   the ALP losing Fowler (NSW) to independent Dai Le.
+
+-   Coalition seats such as Higgins (VIC) and Bennelong (NSW) falling to Labor.
+
+```{r datatable-misses}
+datatable(
+  misses_tmp %>%
+    mutate(Division = factor(
+      Division, levels = unique(Division), ordered = TRUE
+    )) %>%
+    group_by(Division) %>%
+    mutate(label = paste(
+      paste0(cur_group_id(), ":"),
+      Division,
+      paste0("(", state, ")")
+    )) %>%
+    ungroup() %>%
+    mutate(status = if_else(winner, "Winner", "Favourite")) %>%
+    mutate(outcomes = paste0(status, ": ", outcomes)) %>%
+    mutate(prob = 100 * prob) %>%
+    mutate(prices = as.double(prices)) %>%
+    select(label, outcomes,
+           prices, prob, prob_nls, per_fp, per_tcp),
+  rownames = FALSE,
+  class = "row-border",
+  colnames = c(
+    "Division",
+    "Candidate",
+    "Price",
+    "IPOW",
+    "IPOW (NLS)",
+    "FP %",
+    "TCP %"
+  ),
+  elementId = "tab-loses-favourites",
+  extensions = c("Buttons", "RowGroup"),
+  callback = JS(
+    "$('table').alignColumn([2,3,4,5,6]);",
+    "$('table').fixRowGroup(11);"
+  ),
+  caption = "Table 2: Sixteen House of Representatives divisions where the Sportsbet favourite lost, Australian 2022 federal election.   Prices and implied probabilities of winning (IPOWs) are closing prices, as polls closed on election day.  The column labelled IPOW (NLS) removes long shots within each division, defined as an unadjusted IPOW < 10%. FP are first preferences and TCP are two-candidate preferred preferences (undefined for candidates excluded at or before the final distribution of preferences).",
+  options = list(
+    dom = "Bt",
+    rowGroup = list(dataSrc = 0),
+    buttons = c("copy", "csv", "excel"),
+    initComplete = JS(
+      "function(settings, json) {",
+      "$(this.api().table().header()).css({'font-size': '91%'});",
+      "$(this.api().table().body()).css({'font-size': '91%'});",
+      "}"
+    ),
+    searching = FALSE,
+    paging = FALSE,
+    ordering = FALSE,
+    scrollY = "800px",
+    scrollCollapse = TRUE,
+    columnDefs = list(
+      list(targets = 0, visible = FALSE),
+      list(targets = 1,
+           className = "dt-right")
+    )
+  )
+) %>%
+  formatRound(columns = 3, digits = 2) %>%
+  formatRound(columns = 4:8, digits = 1)
+```
+
+## Predicting seat turnover {#sec-predicting-seat-turnover}
+
+<a href="#tab-turnover">Table 3</a> summarises the accuracy of Sportsbet seat-level predictions, with respect to whether the seat would change hands or the incumbent candidate or party would be re-elected.
+
+```{r}
+turnover <- left_join(
+  d,
+  changing_hands %>%
+    select(-leading_party),
+  by = "Division"
+) %>% 
+  mutate(inc_party =
+           case_when(
+             inc_party=="ALP" ~ "Labor",
+             inc_party %in% c("LP","LNP","NP") ~ "Coalition",
+             inc_party == "GVIC" ~ "GRN",
+             inc_party == "IND" ~ "IND",
+             TRUE ~ "OTH")
+  ) %>%
+  mutate(changing_hands = inc_party != winner,
+         fav_win = fav == winner,
+         inc_fav = inc_party == fav)
+
+tab_turnover_1 <- turnover %>% 
+  group_by(inc_fav,changing_hands) %>% 
+  summarise(n = n(),
+            label = knitr::combine_words(Division)
+            ) %>% 
+  ungroup() %>%
+  mutate(label = if_else(n < 20,
+                         as.character(label),
+                         NA_character_)
+         ) %>% 
+  mutate(inc_fav = factor(inc_fav,
+                          levels = c(TRUE,FALSE),
+                          labels = c("Incumbent Win","Incumbent Loss")
+                          ),
+         changing_hands = factor(changing_hands,
+                                 levels = c(TRUE,FALSE),
+                                 labels = c("Incumbent Loss","Incumbent Win")
+                                 )
+  )
+
+datatable(tab_turnover_1,
+          elementId = "tab-turnover",
+          rownames = FALSE,
+          caption = "Table 3: Predicted seat turnover in Sportsbet House of Representatives betting markets, compared with actual outcomes, Australian 2022 federal election.",
+          colnames = c("Sportsbet prediction","Election outcome","n","Divisions"),
+          options = list(dom = "t"))
+```
+
+Incumbent candidates and/or parties lost in 20 seats. Sportsbet's markets anticipated 8 of these loses (but not the winning party in Brisbane). In three seats incumbents candidates and/or parties were returned when Sportsbet markets anticipated the seat changing hands: two of these seats, Bass and Braddon are in Tasmania and the other is Longman (QLD). Put differently, 8 out of Sportsbet's 11 (72.8%) predictions that incumbent parties or candidates would lose were correct; 128 of 140 (91.4%) predictions that incumbent candidates/parties would be returned were correct.
+
+## Comparison with survey-based predictions {#sec-survey-predictions}
+
+```{r mrp}
+yg <- readxl::read_xlsx(here("data/yg_mrp/YouGov MRP.xlsx")) %>%
+  rename(Division = Seat) %>%
+  pivot_longer(cols = where(is_double),
+               names_to = "j",
+               values_to = "p") %>%
+  group_by(Division) %>%
+  mutate(yg_fav = j[which.max(p)]) %>%
+  ungroup() %>%
+  mutate(yg_fav = str_remove(yg_fav, pattern = "2CP")) %>%
+  mutate(yg_fav = if_else(
+    Division %in% c("Bennelong", "Corangamite", "Lindsay"),
+    "ALP",
+    yg_fav
+  )) %>%
+  left_join(
+    parties_affiliation_group_xwalk %>%
+      rename(yg_fav_outcomes_collapsed = party_group,
+             yg_fav = affiliation_abb),
+    by = "yg_fav"
+  ) 
+
+yg_fav <- yg %>%
+  distinct(Division, yg_fav, yg_fav_outcomes_collapsed) %>%
+  left_join(plotData_tcp %>%
+              select(Division, winner, winning_party) %>%
+              distinct(),
+            by = "Division") %>%
+  mutate(
+    winning_party = recode(
+      winning_party,
+      "GVIC" = "GRN",
+      "KAP" = "IND",
+      "LP" = "LNP",
+      "NP" = "LNP",
+      "XEN" = "IND"
+    )
+  )
+
+## a unit wager on each of MRPs favourites?
+yg_betting <- yg_fav %>%
+  left_join(
+    candidates %>%
+      select(Division,
+             winner = name, candidate_id),
+    by = c("Division", "winner")
+  ) %>%
+  left_join(
+    d_last %>% select(Division, candidate_id, prices, prob, outcomes_collapsed) %>%
+      group_by(Division) %>%
+      mutate(fav_sportsbet = outcomes_collapsed[which.max(prob)]) %>%
+      ungroup() %>% select(-outcomes_collapsed),
+    by = c("Division", "candidate_id")
+  ) %>%
+  mutate(yg_fav_win = yg_fav == winning_party) %>%
+  mutate(stake = if_else(yg_fav_win, prices, -1)) %>%
+  mutate(profit = stake - 1)
+
+yg_contra <- yg_betting %>%
+  filter(yg_fav_outcomes_collapsed != fav_sportsbet) %>%
+  select(Division,
+         yg = yg_fav_outcomes_collapsed,
+         sportsbet = fav_sportsbet) %>%
+  pivot_longer(
+    cols = c("yg", "sportsbet"),
+    names_to = "j",
+    values_to = "outcomes_collapsed"
+  ) %>%
+  left_join(
+    d_last %>% select(Division, outcomes_collapsed, prices),
+    by = c("Division", "outcomes_collapsed")
+  ) %>%
+  rename(fav = outcomes_collapsed) %>%
+  pivot_wider(
+    id_cols = 'Division',
+    names_from = "j",
+    values_from = c("fav", "prices")
+  )
+
+```
+
+YouGov Australia used a large survey and multivariate regression and post-stratification (or MRP) to produce estimates of vote shares in each House of Representatives division.  These estimates were published by _The Australian_ newspaper on 12 May 2022, nine days prior to Election Day.   YouGov also produced estimates of two-candidate preferred vote shares, and hence forecasts of winners of each seat.
+
+YouGov's MRP estimates outperformed betting markets by a net 4 seats correctly called, with 12 incorrect predictions, all of which were also incorrectly forecast by Sportsbet markets.   The improvements over Sportsbet were to correctly predict Coalition loses in Kooyong (VIC) and Higgins (VIC) and the Coalition's retentions of Braddon (TAS) and Longman (QLD).
+
+# Are Sportsbet probabilities well calibrated to actual election results?
+
+Probabilities are well calibrated when events happen with rates equal to their corresponding probabilities. Events assigned low probabilities should occur rarely and conversely high probability events should occur frequently, if the probabilities are well-calibrated with reality.  More generally, events with probability in a neighbourhood of $p$ should occur $p \times\ 100$ percent of the time. Calibration is thus a very desirable property for any probabilistic forecast.   
+
+We assess the calibration of Sportsbet IPOWs in House of Representative seats in the 2022 election in two ways: 
+
+- assessing the relationship between IPOWs and two-candidate preferred vote shares for candidates and parties in the "final two" in a division (@sec-ipow-tcp)
+
+- assessing the relationship between IPOWs and rates of winning (@sec-calibration)
+
+```{r}
+#| label: loess-functions
+gcv.loess <- function(m){
+  e <- resid(m)
+  n <- length(e)
+  denom <- 1 - m$enp/n
+  gcv <- mean((e/denom)^2)
+  return(gcv)
+}
+
+autoloess_2 <- function(data, nn = c(.1, 1)) {
+  if (nrow(data) < 10 | max(data$y) < 15) {
+    return(lm(y ~ prob, data = data))
+  }
+  ## loss function in form to be used by optimize
+  f <- function(span, data) {
+    require(locfit)
+    m_star <- try(locfit(y ~ lp(prob, nn = span, deg = 1),
+                         ##ev = lfgrid(mg=101), 
+                     data = data),
+                  silent = TRUE)
+    if (inherits(m_star, "try-error")) {
+      return(sd(data$y))
+    } else {
+      return(locfit::gcv(m_star)["gcv"])
+    }
+  }
+  
+  m_span <- optimise(f, interval = nn, data = data)$minimum
+  
+  m_star <- locfit(y ~ lp(prob, nn = m_span, deg = 1),
+                   data = data)
+  
+  return(m_star)
+}
+
+
+autoloess_wrapper <-
+  function(formula,
+           data,
+           family = "symmetric",
+           degree = 1L) {
+    tfit <- try(loess(
+      formula = formula,
+      data = data,
+      control = loess.control(
+        surface = "direct",
+        statistics = "exact",
+        trace.hat = "exact",
+        iterations = 6
+      ),
+      degree = degree,
+      family = family
+    ),
+    silent = TRUE
+    )
+    
+    if (inherits(tfit, "try-error")) {
+      return(lm(formula, data))
+    }
+    
+    autoloess <- function(fit, span = c(.1, 1)) {
+      stopifnot(inherits(fit, 'loess'), length(span) == 2)
+      
+      # loss function in form to be used by optimize
+      f <- function(span) {
+        newfit <- try(update(fit, span = span), silent = TRUE)
+        if (inherits(newfit, "try-error")) {
+          return(1000)
+        } else {
+          return(gcv.loess(newfit))
+        }
+      }
+      
+      # find best loess according to loss function
+      opt_span <- optimize(f, span)$minimum
+      
+      return(update(fit, span = opt_span))
+    }
+    
+    fit <- autoloess(fit = tfit)
+    return(fit)
+  }
+
+cal_func <- function(obj){
+  m <- autoloess(obj)
+  out <- tibble(prob = 0:100) 
+  out <- out %>% 
+    mutate(phat = predict(m, newdata = out))
+  
+  return(out)
+}
+```
+
+```{r add-fp-predictions,eval=FALSE}
+library(modelr)
+
+m <- plotData_fp %>%
+  rename(y = per,
+         prob_nls = prob,
+         prob = prob_raw) %>%
+  group_by(outcomes_collapsed) %>%
+  nest() %>%
+  mutate(
+    m = map(data, ~ autoloess_wrapper(y ~ prob, data = .x)),
+    yhat = map2(
+      .x = data,
+      .y = m,
+      ~ add_predictions(
+        data = data.frame(prob = seq_range(.x$prob, n = nrow(.x))),
+        model = .y,
+        type = "response"
+      )
+    )
+  )
+
+yhat <- m %>%
+  unnest(yhat) %>%
+  ungroup() %>%
+  select(outcomes_collapsed,prob,pred) %>%
+  mutate(prob = as.numeric(prob),
+         pred = as.numeric(pred)) %>%
+  mutate(pred = ifelse(pred < 0,0,pred),
+         pred = ifelse(pred > 100,100,pred)) %>%
+  arrange(outcomes_collapsed,prob)
+```
+
+```{r,eval=FALSE}
+ojs_define(
+  fp_data_tmp = m %>% 
+    ungroup() %>% 
+    unnest(data) %>% 
+    select(-m, -yhat) %>% 
+    rename(votes = y) %>%
+    mutate(across(where(is.double), as.numeric)) %>%
+    mutate(prob = ifelse(prob == 0, .Machine$double.eps, prob)) %>%
+    mutate(outcomes_collapsed_1 = 1 - (match(outcomes_collapsed,sort(unique(outcomes_collapsed))) %% 2),
+           outcomes_collapsed_2 = 3 - floor(match(outcomes_collapsed,sort(unique(outcomes_collapsed)))/2)) %>% 
+    mutate(across(starts_with("outcomes"),~as.character(.x))) %>% 
+    arrange(outcomes_collapsed, prob)
+)
+
+ojs_define(fp_yhat_tmp = yhat)
+```
+
+```{ojs}
+//| eval: false
+fp_d = transpose(fp_data_tmp)
+fp_yhat = transpose(fp_yhat_tmp)
+```
+
+```{ojs}
+//| eval: false
+Plot.plot({
+  width: 1020,
+  height: 1640,
+  marginTop: 52,
+  /*insetTop: 6, */
+  
+  style: {
+    fontSize: "16px"
+  },
+  
+  x: {
+    label: "Sportsbet IPOW (%) →",
+    nice: true,
+    labelOffset: 42 
+  },
+  
+  y: {
+    label: "↑ 2022 1st preferences (%)",
+    domain: [0, 60]
+  },
+
+  facet: {
+    data: fp_d,
+    x: "outcomes_collapsed_1",
+    y: "outcomes_collapsed_2",
+    label: null,
+    grid: false,
+    marginTop: 22,
+    marginLeft: 0,
+    marginRight: 0,
+    marginBottom: 24
+    },
+    
+  fx: {
+    padding: 0.1,
+    label: null,
+    insetLeft: 12,
+    tickFormat: null
+  },
+  
+  fy: {
+    label: null,
+    tickFormat: null
+  },
+  
+  marks: [
+  
+    Plot.frame(),
+    
+    Plot.text(fp_d,
+      Plot.selectFirst(
+      {
+        x: 0,
+        y: 60,
+        dx: 4,
+        dy: 12,
+        textAnchor: "start",
+        text: "outcomes_collapsed"
+      }
+      )
+      ),
+      
+    Plot.dot(fp_d,
+    { x: "prob", 
+      y: "votes" ,
+      title: (d) => `${d.Division} (${d.State}) \n Pr(${d.name} win) = ${d3.format(".0f")(d.prob)}% \n FP: ${d3.format(".0f")(d.votes)}%`,
+      fill: (d) => d.name == d.winner ? "red" : "transparent",
+      r:    3,
+      stroke: "#3333337f"
+    }
+    ),
+  
+    Plot.line(
+      fp_yhat, 
+       { x: "prob", 
+        y: "pred",
+        facet: "include",
+        stroke: "orange",
+        strokeWidth: 3
+      }
+    )
+    
+  ],
+  
+  tooltip: {
+    fill: "#eee"
+  }  
+  
+})
+```
+
+## Relationship between IPOWs and TCP {#sec-ipow-tcp}
+
+```{r add-tcp-predictions}
+library(modelr)
+
+m <- plotData_tcp %>%
+  mutate(outcomes_collapsed =
+           if_else(
+             outcomes_collapsed %in% c("IND", "OTH"),
+             "IND/OTH",
+             outcomes_collapsed
+           )) %>%
+  rename(y = per,
+         prob_nls = prob,
+         prob = prob_raw) %>%
+  group_by(outcomes_collapsed) %>%
+  nest() %>%
+  mutate(
+    m = map(data, ~ autoloess_wrapper(y ~ prob, data = .x)),
+    yhat = map2(
+      .x = data,
+      .y = m,
+      ~ add_predictions(
+        data = data.frame(prob = seq_range(.x$prob, n = nrow(.x))),
+        model = .y,
+        type = "response"
+      )
+    )
+  )
+
+yhat <- m %>%
+  unnest(yhat) %>%
+  ungroup() %>%
+  select(outcomes_collapsed,prob,pred) %>%
+  mutate(prob = as.numeric(prob),
+         pred = as.numeric(pred)) %>%
+  mutate(pred = ifelse(pred < 0,0,pred),
+         pred = ifelse(pred > 100,100,pred)) %>%
+  arrange(outcomes_collapsed,prob)
+```
+
+```{r}
+ojs_define(
+  data_tmp = m %>% 
+    ungroup() %>% 
+    unnest(data) %>% 
+    select(-m, -yhat) %>% 
+    rename(votes = y) %>%
+    mutate(across(where(is.double), as.numeric)) %>%
+    mutate(prob = ifelse(prob == 0, .Machine$double.eps, prob)) %>%
+    mutate(missclassified = prob < 50 &
+             votes > 50 | prob > 50 & votes < 50) %>%
+    mutate(missclassified_2 = prob > 50 & votes < 50) %>%
+    mutate(outcomes_collapsed_1 = if_else(outcomes_collapsed %in% c("Coalition","IND/OTH"),0,1),
+           outcomes_collapsed_2 = if_else(outcomes_collapsed %in% c("Coalition","GRN"),0,1)) %>% 
+    arrange(outcomes_collapsed, prob)
+)
+
+ojs_define(yhat_tmp = yhat)
+```
+
+```{ojs}
+d = transpose(data_tmp)
+yhat = transpose(yhat_tmp)
+```
+
+```{ojs}
+//| eval: true
+addTooltips = (chart, hover_styles = { fill: "blue", opacity: 0.5 }) => {
+  let styles = hover_styles;
+  const line_styles = {
+    stroke: "blue",
+    "stroke-width": 3
+  };
+  // Workaround if it's in a figure
+  const type = d3.select(chart).node().tagName;
+  let wrapper =
+    type === "FIGURE" ? d3.select(chart).select("svg") : d3.select(chart);
+
+  // Workaround if there's a legend....
+  const numSvgs = d3.select(chart).selectAll("svg").size();
+  if (numSvgs === 2)
+    wrapper = d3
+      .select(chart)
+      .selectAll("svg")
+      .filter((d, i) => i === 1);
+  wrapper.style("overflow", "visible"); // to avoid clipping at the edges
+
+  // Set pointer events to visibleStroke if the fill is none (e.g., if its a line)
+  wrapper.selectAll("path").each(function (data, index, nodes) {
+    // For line charts, set the pointer events to be visible stroke
+    if (
+      d3.select(this).attr("fill") === null ||
+      d3.select(this).attr("fill") === "none"
+    ) {
+      d3.select(this).style("pointer-events", "visibleStroke");
+      styles = _.isEqual(hover_styles, { fill: "blue", opacity: 0.5 })
+        ? line_styles
+        : hover_styles;
+    }
+  });
+
+  const tip = wrapper
+    .selectAll(".hover-tip")
+    .data([""])
+    .join("g")
+    .attr("class", "hover")
+    .style("pointer-events", "none")
+    .style("text-anchor", "middle");
+
+  // Add a unique id to the chart for styling
+  const id = id_generator();
+
+  // Add the event listeners
+  d3.select(chart)
+    .classed(id, true) // using a class selector so that it doesn't overwrite the ID
+    .selectAll("title")
+    .each(function () {
+      // Get the text out of the title, set it as an attribute on the parent, and remove it
+      const title = d3.select(this); // title element that we want to remove
+      const parent = d3.select(this.parentNode); // visual mark on the screen
+      const t = title.text();
+      if (t) {
+        parent.attr("__title", t).classed("has-title", true);
+        title.remove();
+      }
+      // Mouse events
+      parent
+        .on("mousemove", function (event) {
+          const text = d3.select(this).attr("__title");
+          const pointer = d3.pointer(event, wrapper.node());
+          if (text) tip.call(hover, pointer, text.split("\n"));
+          else tip.selectAll("*").remove();
+
+          // Raise it
+          d3.select(this).raise();
+          // Keep within the parent horizontally
+          const tipSize = tip.node().getBBox();
+          if (pointer[0] + tipSize.x < 0)
+            tip.attr(
+              "transform",
+              `translate(${tipSize.width / 2}, ${pointer[1] + 7})`
+            );
+          else if (pointer[0] + tipSize.width / 2 > wrapper.attr("width"))
+            tip.attr(
+              "transform",
+              `translate(${wrapper.attr("width") - tipSize.width / 2}, ${
+                pointer[1] + 7
+              })`
+            );
+        })
+        .on("mouseout", function (event) {
+          tip.selectAll("*").remove();
+          // Lower it!
+          d3.select(this).lower();
+        });
+    });
+
+  // Remove the tip if you tap on the wrapper (for mobile)
+  wrapper.on("touchstart", () => tip.selectAll("*").remove());
+  // Add styles
+  const style_string = Object.keys(styles)
+    .map((d) => {
+      return `${d}:${styles[d]};`;
+    })
+    .join("");
+
+  // Define the styles
+  const style = html`<style>
+      .${id} .has-title {
+       cursor: pointer; 
+       pointer-events: all;
+      }
+      .${id} .has-title:hover {
+        ${style_string}
+    }
+    </style>`;
+  chart.appendChild(style);
+  return chart;
+}
+
+// Function to position the tooltip
+hover = (tip, pos, text) => {
+  const side_padding = 10;
+  const vertical_padding = 2;
+  const vertical_offset = 24;
+
+  // Empty it out
+  tip.selectAll("*").remove();
+
+  // Append the text
+  tip
+    .style("text-anchor", "middle")
+    .style("pointer-events", "none")
+    .attr("transform", `translate(${pos[0]}, ${pos[1] - 6})`)
+    .selectAll("text")
+    .data(text)
+    .join("text")
+    .style("dominant-baseline", "ideographic")
+    .text((d) => d)
+    .attr("y", (d, i) => (i - (text.length - 1)) * 18 - vertical_offset)
+    .style("font-weight", (d, i) => (i === 0 ? "bold" : "normal"));
+
+  const bbox = tip.node().getBBox();
+
+  // Add a rectangle (as background)
+  tip
+    .append("rect")
+    .attr("y", bbox.y - vertical_padding)
+    .attr("x", bbox.x - side_padding)
+    .attr("width", bbox.width + side_padding * 2)
+    .attr("height", bbox.height + vertical_padding * 2)
+    .style("fill", "white")
+    .style("stroke", "#eee")
+    .lower();
+    
+  tip
+    .append("line")
+    .attr("x1",bbox.x + bbox.width/2)
+    .attr("x2",bbox.x + bbox.width/2)
+    .attr("y1",bbox.y + vertical_padding)
+    .attr("y2",this.y)
+    .style("stroke","#eee")
+    .lower();
+}
+
+// To generate a unique ID for each chart so that they styles only apply to that chart
+id_generator = () => {
+  var S4 = function () {
+    return (((1 + Math.random()) * 0x10000) | 0).toString(16).substring(1);
+  };
+  return "a" + S4() + S4();
+}
+
+Plot = tooltipPlugin(await require("@observablehq/plot@0.5"))
+
+tooltipPlugin = (Plot) => {
+  const { plot } = Plot;
+  Plot.plot = ({ tooltip, ...options }) => addTooltips(plot(options), tooltip);
+  return Plot;
+}
+```
+
+```{ojs}
+//| label: fig-seat-level
+//| fig-cap: "Two-candidate preferred vote share plotted against Sportsbet closing IPOW.   Each data point is a House of Representatives division; highlighted points in the off-diagnoals quadrants are seats where the Sportsbet favourite did not win.  Orange lines indicate trends.  Roll over each data point to display division name and other information."
+Plot.plot({
+  width: 1020,
+  height: 1060,
+  marginTop: 52,
+  /*insetTop: 6, */
+  
+  style: {
+    fontSize: "16px"
+  },
+  
+  x: {
+    label: "Sportsbet IPOW (%) →",
+    nice: true,
+    labelOffset: 42 
+  },
+  
+  y: {
+    label: "↑ 2022 two-candidate preferred (%)",
+    domain: [25, 75]
+  },
+
+  facet: {
+    data: d,
+    x: "outcomes_collapsed_1",
+    y: "outcomes_collapsed_2",
+    label: null,
+    grid: true,
+    marginTop: 22,
+    marginLeft: 0,
+    marginRight: 0,
+    marginBottom: 24
+    },
+    
+  fx: {
+    padding: 0.1,
+    label: null,
+    insetLeft: 12,
+    tickFormat: null
+  },
+  
+  fy: {
+    label: null,
+    tickFormat: null
+  },
+  
+  marks: [
+  
+    Plot.frame(),
+  
+    Plot.link([0],
+      {x1: 0, x2: 100, y1: 50, y2: 50, stroke: "#ccc"}
+      ),
+    Plot.link([0],
+      {x1: 50, x2: 50, y1: 25, y2: 75, stroke: "#ccc"}
+      ),
+    
+    Plot.text(d,
+      Plot.selectFirst(
+      {
+        x: 0,
+        y: 75,
+        dx: 4,
+        dy: 12,
+        textAnchor: "start",
+        text: "outcomes_collapsed"
+      }
+      )
+      ),
+      
+    Plot.dot(d,
+    { x: "prob", 
+      y: "votes" ,
+      title: (d) => `${d.Division} (${d.State}) \n Pr(${d.outcomes_collapsed} win) = ${d3.format(".0f")(d.prob)}% \n ${d.outcomes_collapsed} TCP: ${d3.format(".0f")(d.votes)}%` + (d.missclassified_2 ? `\n Won by ${d.winning_party}: ${d3.format(".0f")(d.votes_winner)}% TCP` : ``),
+      fill: (d) => d.missclassified ? "red" : "transparent",
+      r:    (d) => d.missclassified ? 5 : 3,
+      stroke: "#3333337f"
+    }
+    ),
+  
+    Plot.line(yhat, 
+       { x: "prob", 
+        y: "pred",
+        facet: "include",
+        stroke: "orange",
+        strokeWidth: 3
+      }
+    )
+    
+  ],
+  
+  tooltip: {
+    fill: "#eee"
+  }  
+  
+})
+```
+
+## Calibration of forecasts and long-shot biases {#sec-calibration}
+
+In @fig-loess-calibration we assess the *calibration* of Sportsbet IPOWs; for this analysis we use IPOWs without any adjustment for long-shot bias, investigating the magnitude of these biases in Sportsbet prices.
+
+
+```{r}
+cdata_raw <- plotData_tcp %>%
+  filter(outcomes_collapsed %in% c("Labor", "Coalition")) %>%
+  select(outcomes_collapsed, per, prob = prob_raw, Division, State, winning_party, votes_winner) %>%
+  group_by(outcomes_collapsed) %>%
+  mutate(y = as.numeric(per > 50)) %>%
+  ungroup()  %>%
+  mutate(votes = per,
+         missclassified = prob < 50 &
+           votes > 50 | prob > 50 & votes < 50) %>% 
+      mutate(missclassified_2 = prob > 50 & votes < 50) 
+
+
+cdata_raw_2 <- cdata_raw %>%
+  group_nest(outcomes_collapsed) %>% 
+   mutate(
+    m = map(data, ~ autoloess_wrapper(y ~ prob, family="g", data = .x)),
+    yhat = map2(
+      .x = data,
+      .y = m,
+      ~ add_predictions(
+        data = data.frame(prob = seq_range(.x$prob, n = nrow(.x))),
+        model = .y,
+        type = "response"
+      )
+    )
+  ) %>% 
+  ungroup() %>% 
+  select(-m,-data) %>% 
+  unnest(yhat) %>%  
+  mutate(pred = if_else(pred < 0,0,pred),
+          pred = if_else(pred > 1,1,pred),
+          pred = pred * 100) %>% 
+  mutate(type = "No long shot adjustment") %>%
+  filter(!is.na(pred))
+
+g <- ggplot(cdata_raw_2,
+            aes(x = prob, y = pred)) +
+  geom_line(col = "blue", linewidth = 1.5) +
+  geom_point(
+    data = cdata_raw,
+    inherit.aes = FALSE,
+    aes(x = prob, y = y * 100),
+    shape = 1
+  ) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    size = 1.5,
+    col = gray(0.5)
+  ) +
+  facet_grid( ~ outcomes_collapsed) +
+  scale_x_continuous(
+    "Sportsbet IPOW (no correction for long shot bias)",
+    limits = c(0, 100),
+    minor_breaks = NULL,
+    expand = expansion(add = c(1, 1),
+                       mult = c(0, 0))
+  ) +
+  scale_y_continuous(
+    "Outcomes",
+    limits = c(0, 100),
+    minor_breaks = NULL,
+    expand = expansion(add = c(1, 1),
+                       mult = c(0, 0))
+  ) +
+  coord_equal() +
+  theme_minimal(base_family = "Avenir") +
+  theme(panel.spacing.x = unit(1, "char"))
+```
+
+```{r}
+ojs_define(cdata_tmp = cdata_raw_2)
+ojs_define(cdata_raw_tmp = cdata_raw)
+```
+
+```{ojs}
+cdata = transpose(cdata_tmp)
+cdata_points = transpose(cdata_raw_tmp)
+```
+
+
+```{ojs}
+//| label: fig-loess-calibration
+//| fig-cap: "Calibration curves for Sportsbet IPOWs (unadjusted for long shot bias, horizontal axis).  The actual proportion of wins is plotted on the vertical axis, shown with the orange line (estimated by locally linear regression); for well-calibrated probabilistic forecasts this line should not differ markedly from the black, 45 degree line.   The local linear regressions of outcomes on IPOWs are fit using loess with bandwidth selected so as to minimise cross-validation error."
+Plot.plot({
+  width: 1020,
+  height: 580,
+  marginTop: 52,
+  /*insetTop: 6, */
+  
+  style: {
+    fontSize: "16px"
+  },
+  
+  x: {
+    label: "Sportsbet IPOW, no correction for long shot bias (%) →",
+    nice: true,
+    labelOffset: 42 
+  },
+  
+  y: {
+    label: "↑ Seats won (%)",
+    domain: [-1, 100]
+  },
+
+  facet: {
+    data: cdata,
+    x: "outcomes_collapsed",
+    label: null,
+    marginTop: 22,
+    marginLeft: 0,
+    marginRight: 0,
+    marginBottom: 24
+    },
+    
+  fx: {
+    padding: 0.1,
+    label: null,
+    insetLeft: 12
+  },
+  
+
+  marks: [
+  
+    Plot.link([0],
+      {x1: 0, x2: 100, y1: 50, y2: 50, stroke: "#ccc"}
+      ),
+    Plot.link([0],
+      {x1: 50, x2: 50, y1: 0, y2: 100, stroke: "#ccc"}
+      ),
+      
+    Plot.link([0],
+      {x1: 0, x2: 100, y1: 0, y2: 100, stroke: "#333", strokeWidth: 3}
+    ),
+    
+    Plot.dot(cdata_points,
+    { x: "prob", 
+      y: (d) => d.y==1 ? 100 : 0,
+      title: (d) => `${d.Division} (${d.State}) \n Pr(${d.outcomes_collapsed} win) = ${d3.format(".0f")(d.prob)}% \n ${d.outcomes_collapsed} TCP: ${d3.format(".0f")(d.votes)}%` + (d.missclassified_2 ? `\n Won by ${d.winning_party}: ${d3.format(".0f")(d.votes_winner)}% TCP` : ``),
+      fill: (d) => d.missclassified ? "red" : "transparent",
+      r:    (d) => d.missclassified ? 5 : 3,
+      stroke: "#3333337f"
+    }
+    ), 
+  
+  
+    Plot.line(cdata, 
+       { x: "prob", 
+        y: "pred",
+        facet: "include",
+        stroke: "orange",
+        strokeWidth: 3
+      }
+    )
+    
+  ],
+  
+  tooltip: {
+    fill: "#eee"
+  }  
+  
+})
+```
+
+Again we note the overly bullish Coalition IPOWs in Sportsbet markets.   The Coalition won **no** seats where its IPOW was below 44%, reflected in the calibration curve not moving from zero until IPOW ≅ 20%.   Betting markets also overstated the Coalition's success in "toss-up" seats with IPOWs close to 50%, with the calibration curve placing the Coalition win rate at 42%.
+
+Conversely, betting markets underestimated Labor performance slightly in toss-up seats, but markedly in seats where Labor was the market favourite. Labor won 75% of those seats with IPOW in the neighbourhood of 60% and **every** seat where its IPOW exceeded 65%.
+
+As expected, longshot bias is clearly apparent in @fig-loess-calibration.  Sportsbet, like many betting agencies, attempts to guarantee its profits by offering prices that are too optimistic for long shots, seeking to entice wagers on outcomes that highly unlikely and fewer wagers on likely outcome.   As a consequence, this deflates the IPOW of "sure things" and inflates the IPOW of virtually impossible outcomes.
+
+# Movement over the campaign
+
+```{r}
+theFiles <- list.files(here("data/sportsbet"), pattern = "fst$", full.names = TRUE)
+d <- lapply(theFiles, read.fst)
+d <- bind_rows(d) %>% mutate(event = str_squish(event))
+lubridate::tz(d$datetime) <- "Australia/Sydney"
+
+## correct spelling error by Sportsbet
+d <- d %>%
+  mutate(event = ifelse(event == "Capriconia (QLD)", "Capricornia (QLD)", event)) %>%
+  mutate(
+    outcomes = ifelse(
+      event == "New England (NSW)" & outcomes == "Pavlo Samios (Liberal)",
+      "Pavlo Samios (Liberal Democrats)",
+      outcomes
+    )
+  )
+
+## catch any missing prices
+d <- d %>%
+  group_by(event, datetime) %>%
+  mutate(prob = (1 / prices) / sum(1 / prices, na.rm = TRUE)) %>%
+  ungroup()
+
+d_long <- d %>%
+  filter(lab %in% theStates) %>%
+  mutate(event = str_squish(str_remove(event, pattern = "\\([A-Z]{1,}\\).*$"))) %>%
+  rename(state = lab, Division = event) %>%
+  left_join(
+    d_last %>%
+      select(
+        Division,
+        outcomes,
+        candidate_id,
+        affiliation_abb,
+        outcomes_collapsed
+      ),
+    by = c("Division", "outcomes")
+  ) %>%
+  mutate(outcomes = if_else(outcomes == "Green", "Greens", outcomes)) %>%
+  mutate(affiliation =
+           gsub(outcomes,
+                pattern = "^.* \\((.*)\\)$",
+                replacement = "\\1")) 
+  
+c_uniques <- d_long %>% 
+  distinct(Division,outcomes,affiliation_abb,outcomes_collapsed,affiliation,candidate_id) %>% 
+  arrange(Division,affiliation,affiliation_abb) %>% 
+  group_by(Division) %>% 
+  mutate(affiliation = if_else(
+    affiliation != "Liberal Democrats" & grepl("^Liberal",affiliation) & !any(grepl("^National",affiliation)),
+           "Coalition",
+           affiliation)
+    ) %>% 
+  mutate(affiliation = if_else(
+    grepl("^National",affiliation) & !any(affiliation == "Coalition"),
+    "Coalition",
+    affiliation)
+    ) %>%
+  mutate(affiliation = if_else(affiliation == "Liberal National Party","Coalition",affiliation)) %>% 
+  ungroup() %>% 
+  arrange(Division,affiliation,affiliation_abb) %>% 
+  group_by(Division,affiliation) %>% 
+  fill(outcomes_collapsed,affiliation_abb) %>% 
+  ungroup() %>% 
+  group_by(Division,affiliation_abb) %>% 
+  fill(candidate_id) %>% 
+  ungroup()
+
+d_long <- d_long %>%
+  select(-candidate_id) %>%
+  left_join(c_uniques %>%
+              select(Division, outcomes, candidate_id),
+            by = c("Division", "outcomes")) %>%
+  select(-affiliation_abb) %>%
+  left_join(
+    candidates %>%
+      select(Division, candidate_id, name, affiliation_abb),
+    by = c("Division", "candidate_id")
+  ) %>%
+  group_by(Division) %>%
+  mutate(affiliation = if_else(
+    affiliation != "Liberal Democrats" &
+      (
+        grepl("^Liberal", affiliation) | affiliation == "Country Liberal"
+      ) &
+      !any(grepl("National", affiliation)),
+    "Coalition",
+    affiliation
+  )) %>%
+  mutate(affiliation = if_else(
+    grepl("^National", affiliation) & !any(affiliation == "Coalition"),
+    "Coalition",
+    affiliation
+  )) %>%
+  mutate(affiliation = if_else(
+    affiliation == "Liberal National Party",
+    "Coalition",
+    affiliation
+  )) %>%
+  ungroup() %>%
+  mutate(affiliation = if_else(grepl("^Independ", affiliation),
+                               "Independent",
+                               affiliation)) %>%
+  mutate(affiliation = if_else(
+    grepl("^National", affiliation) | affiliation == "The Nationals",
+    "National",
+    affiliation
+  )) %>%
+  mutate(affiliation_collapse = if_else(
+    affiliation %in% c(
+      "Coalition",
+      "Labor",
+      "Liberal",
+      "National",
+      "Greens",
+      "Independent",
+      "One Nation",
+      "United Australia Party"
+    ),
+    affiliation,
+    "Other"
+  )) %>%
+  mutate(datetime = strftime(datetime, format = "%FT%XZ")) %>%
+  filter(!grepl(pattern = "Kim Prior", outcomes)) %>%
+  filter(!grepl(pattern = "Tom Sellers", outcomes)) %>%
+  group_by(Division, outcomes, affiliation) %>%
+  mutate(candidate_id_tmp = candidate_id) %>%
+  fill(candidate_id_tmp) %>%
+  ungroup() %>%
+  mutate(candidate_id = if_else(affiliation == "Labor",
+                                candidate_id_tmp,
+                                candidate_id)) %>%
+  select(-candidate_id_tmp)
+
+## is there a unique independent in each division
+theIndeps <- candidates %>%
+  filter(independent == "true" & ballot_position < 900) %>%
+  group_by(Division) %>%
+  mutate(n = n_distinct(candidate_id)) %>%
+  ungroup() %>% 
+  filter(n == 1) %>% 
+  select(-n) %>% 
+  mutate(affiliation = "Independent")
+
+my_expand <- function(obj){
+  obj %>% 
+    expand(affiliation,datetime) %>%
+    left_join(obj, 
+              by = c("affiliation","datetime")
+              ) %>% 
+    group_by(affiliation) %>% 
+    fill(candidate_id,.direction = "updown") %>% 
+    ungroup()
+}
+
+d_long <- left_join(
+  d_long,
+  theIndeps %>%
+    select(Division, affiliation, candidate_id),
+  by = c("Division", "affiliation")
+) %>%
+  mutate(candidate_id = coalesce(candidate_id.x, candidate_id.y)) %>%
+  select(-contains(".")) %>% 
+  group_nest(Division) %>% 
+  mutate(m = map(.x=data, ~my_expand(.x))) %>% 
+  ungroup() %>% 
+  unnest(m) %>% 
+  select(-data)
+  
+
+```
+
+```{r}
+ojs_define(d_long_raw = d_long)
+```
+
+```{ojs}
+d_long = transpose(d_long_raw)
+```
+
+
+```{ojs}
+viewof theDivision = autoSelect({
+  options: cdata_points.map(d => d.Division).filter(onlyUnique).sort(), 
+  placeholder: "Enter Division"
+  } 
+)
+
+d_long_ymax = 100;
+
+d_long_plot = Plot.plot({
+  width: 1000,
+  marginTop: 80,
+  marginBottom: 60,
+  height: 600,
+  
+  style: {
+    fontSize: "13px"
+  },
+  
+  x: {
+    label: null,
+    ticks: null,
+    tickFormat: null,
+    type: "utc",
+    domain: [ d3.timeParse("%Y-%m-%d %H")("2022-03-20 00"), 
+              d3.timeParse("%Y-%m-%d %H")("2022-05-22 00") ]
+  },
+
+  y: {
+    label: "IPOW (square-root scale) ↑",
+    type: "sqrt",
+    domain: [0, 100]
+  },
+
+  color: {
+    domain: ["Coalition", "Liberal", "Labor",   "National", "Greens", "Independent", "One Nation", "United Australia Party", "Other" ],
+    range:  ["#009de3",   "#009dff", "#ed1b35", "orange",   "green",  "purple",    "peru",       "yellow",                 "#cccccc7f" ]
+  },
+  
+  marks: [
+  
+    Plot.ruleY([50],{stroke: "#ccc"}),
+  
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-11 10")],{stroke: "#ccc"}),
+    Plot.text(
+    ["Albanese\nunemployment\ngaffe"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-04-11 10"),
+        y: d_long_ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-20 19")], {stroke: "#ccc"}),
+    Plot.text(
+    ["1st\ndebate"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-04-20 19"),
+        y: d_long_ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    //Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-21 12")],{stroke: "#ccc"}),
+    //Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-04-29 12")],{stroke: "#ccc"}),
+    Plot.link([0],
+      { x1: d3.timeParse("%Y-%m-%d %H")("2022-04-21 12"),
+        x2: d3.timeParse("%Y-%m-%d %H")("2022-04-29 12"),
+        y1: d_long_ymax-1,
+        y2: d_long_ymax-1,
+        stroke: "#ccc"
+      }
+    ),
+    
+    Plot.text(
+    ["Albanese\nCOVID\nisolation"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-04-25 12"),
+        y: d_long_ymax-1,
+        dx: 0,
+        dy: -2,
+        textAnchor: "middle",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-05-03 14")],{stroke: "#ccc"}),
+    Plot.text(
+    ["RBA\nrate\nrise"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-05-03 14"),
+        y: d_long_ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-05-08 21")],{stroke: "#ccc"}),
+    Plot.text(
+    ["2nd\ndebate"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-05-08 21"),
+        y: d_long_ymax,
+        dx: -3,
+        dy: 6,
+        textAnchor: "end",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+    Plot.ruleX([d3.timeParse("%Y-%m-%d %H")("2022-05-11 21")],{stroke: "#ccc"}),
+    Plot.text(
+    ["3rd\ndebate"],
+      {
+        x: d3.timeParse("%Y-%m-%d %H")("2022-05-11 21"),
+        y: d_long_ymax,
+        dx: 3,
+        dy: 0,
+        textAnchor: "start",
+        lineAnchor: "bottom",
+        text: (d) => d,
+        fill: "#aaa"
+      }
+    ),
+    
+
+    Plot.lineY(d_long, 
+               {
+                 filter: d => d.Division == theDivision,
+                 x: (d) => d3.timeParse("%Y-%m-%dT%H:%M:%SZ")(d.datetime),
+                 y: (d) => d.prob*100,
+                 z: "candidate_id",
+                 stroke: "affiliation_collapse",
+                 strokeWidth: 2,
+                 curve: "step",
+                 title: (d) => 
+                    ((d.name == "" | d.name === null) ? "" : (d.name + "\n")) + 
+                    d.affiliation + "\n" + 
+                    d3.timeFormat("%_I%p %e %b")(d3.timeParse("%Y-%m-%dT%H:%M:%SZ")(d.datetime)) + 
+                    "\n" + "Price: " + d3.format(".2f")(d.prices) + 
+                    "\n" + "IPOW: " + d3.format(".1f")(d.prob*100) + "%"
+               }
+              )
+            
+  ]
+})
+
+d_long_plot_xscale_original = d_long_plot.scale("x")
+d_long_plot_yscale_original = d_long_plot.scale("y")
+
+d_long_plot_dl = d3.select(d_long_plot)
+  .selectAll(".xaxis-day-labels")
+  .data(weekLabels)
+  .join("text")
+  .attr("x",function(d){ return d_long_plot_xscale_original["apply"](d); })
+  .attr("y",d_long_plot_yscale_original.range[0]+14)
+  .attr("class","xaxis-day-labels")
+  .text(function(d){ return d3.timeFormat("%e")(d); })
+
+d_long_plot_ml = d3.select(d_long_plot)
+  .selectAll(".xaxis-month-labels")
+  .data(weekLabels)
+  .join("text")
+  .attr("x",function(d){ return d_long_plot_xscale_original["apply"](d); })
+  .attr("y",d_long_plot_yscale_original.range[0]+26)
+  .attr("class","xaxis-month-labels")
+  .text(function(d){ return d3.timeFormat("%b")(d); })
+
+d_long_plot_do_ticks = d3.select(d_long_plot)
+  .selectAll(".xaxis-ticks")
+  .data(dayTicks)
+  .join("line")
+  .attr("x1",function(d){ return d_long_plot_xscale_original["apply"](d); })
+  .attr("x2",function(d){ return d_long_plot_xscale_original["apply"](d); })
+  .attr("stroke","black")
+  .attr("y1",d_long_plot_yscale_original["range"][0])
+  .attr("y2",d_long_plot_yscale_original["range"][0]+4)
+  .attr("class","xaxis-ticks");  
+```

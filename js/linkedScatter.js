@@ -47,7 +47,7 @@ var tip = d3.tip()
         return d.Division + " (" + d.State + ")" + "<br>" +
           "TCP:" + " " + fmt(d.votes) + "<br>" +
           "Prob:" + " " + fmt(d.prob) + "<br>" +
-          "Price:" + d3.format("4.2f")(d.prices) + "<br>";
+          "Price:" + " " + d3.format("4.2f")(d.prices) + "<br>";
 /*        "<table class='linkedScatter_tab'>" +
           "<tr><td style='text-align: center;' colspan='2'>" +
           d.Division + " (" + d.State + ")" + "</td></tr>" +
