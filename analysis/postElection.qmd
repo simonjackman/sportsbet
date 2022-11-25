@@ -1,7 +1,12 @@
 ---
 title: "The accuracy of Sportsbet betting markets in the 2022 Australian federal election"
+title-block-banner: true
+description: >
+  Betting markets are often said to provide more accurate forecasts of elections than polls, despite evidence to the contrary.   We contrast the trajectory of Sportsbet's implied probability that either party would win the 2022 Australian federal election and the performance of Sportsbet's markets in all 151 House of Representatives seats.
 author: 
-  - Professor Simon Jackman
+  - name: "Professor Simon Jackman"
+    affiliation: "University of Sydney"
+    email: "simonjackman@icloud.com"
 date: now
 date-format: "h:mmA D MMMM YYYY"
 format:
@@ -17,6 +22,7 @@ format:
     echo: false
     code-tools: true
     smooth-scroll: true
+    page-layout: full
     self-contained: true
 bibliography: references.bib
 number-sections: true
@@ -1454,15 +1460,15 @@ datatable(
     "Price",
     "IPOW",
     "IPOW (NLS)",
-    "FP %",
-    "TCP %"
+    "FP%",
+    "TCP%"
   ),
   elementId = "tab-loses-favourites",
   extensions = c("Buttons", "RowGroup"),
-  callback = JS(
-    "$('table').alignColumn([2,3,4,5,6]);",
-    "$('table').fixRowGroup(11);"
-  ),
+  #callback = JS(
+  #  "$('table').alignColumn([2,3,4,5]);",
+  #  "$('table').fixRowGroup(3);"
+  #),
   caption = "Table 2: Sixteen House of Representatives divisions where the Sportsbet favourite lost, Australian 2022 federal election.   Prices and implied probabilities of winning (IPOWs) are closing prices, as polls closed on election day.  The column labelled IPOW (NLS) removes long shots within each division, defined as an unadjusted IPOW < 10%. FP are first preferences and TCP are two-candidate preferred preferences (undefined for candidates excluded at or before the final distribution of preferences).",
   options = list(
     dom = "Bt",
@@ -1470,14 +1476,14 @@ datatable(
     buttons = c("copy", "csv", "excel"),
     initComplete = JS(
       "function(settings, json) {",
-      "$(this.api().table().header()).css({'font-size': '91%'});",
-      "$(this.api().table().body()).css({'font-size': '91%'});",
+      "$(this.api().table().header()).css({'font-size': '81%'});",
+      "$(this.api().table().body()).css({'font-size': '81%'});",
       "}"
     ),
     searching = FALSE,
     paging = FALSE,
     ordering = FALSE,
-    scrollY = "800px",
+    scrollY = "1000px",
     scrollCollapse = TRUE,
     columnDefs = list(
       list(targets = 0, visible = FALSE),
